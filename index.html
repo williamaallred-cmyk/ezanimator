@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotics Field Animator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- FFmpeg.wasm will be loaded dynamically from CDN for better compatibility -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        .controls-panel {
+            scrollbar-width: thin;
+            scrollbar-color: #4a5568 #2d3748;
+        }
+        .controls-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+        .controls-panel::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        .controls-panel::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 4px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #38bdf8;
+            cursor: pointer;
+            border-radius: 50%;
+            margin-top: -6px;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #38bdf8;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .custom-file-upload {
+            border: 2px dashed #4a5568;
+            display: inline-block;
+            padding: 8px 12px;
+            cursor: pointer;
+            background-color: #2d3748;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .custom-file-upload:hover {
+            border-color: #38bdf8;
+            background-color: #4a5568;
+        }
+    </style>
+    </head>
+<body class="bg-gray-900 text-gray-200 flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Main Canvas Area -->
+    <main class="flex-1 flex flex-col items-center justify-center p-4 bg-gray-800/50">
+        <canvas id="robotCanvas" class="bg-gray-700 rounded-lg shadow-2xl max-w-full max-h-full"></canvas>
+    </main>
+
+    <!-- Controls Panel -->
+    <aside class="w-full md:w-80 lg:w-96 bg-gray-800 p-6 shadow-lg overflow-y-auto controls-panel flex-shrink-0 h-1/2 md:h-full">
+        <div class="space-y-6">
+            <h1 class="text-2xl font-bold text-sky-400">Animator Controls</h1>
+            
+            <!-- Instructions -->
+            <div class="bg-gray-700/50 p-4 rounded-lg text-sm text-gray-300">
+                <h3 class="font-semibold text-lg mb-2 text-white">How to Use:</h3>
+                <ol class="list-decimal list-inside space-y-1.5">
+                    <li>Upload a field image/PDF & initial robot sprite.</li>
+                    <li>Click on the field to add waypoints.</li>
+                    <li>Select a waypoint to edit heading and actions.</li>
+                    <li>Use "Add Sprite Action" or "Duplicate" for stop-motion.</li>
+                    <li>Adjust rotation for each action to rotate sprites.</li>
+                    <li>Press 'Animate' to preview or 'Record' to save.</li>
+                    <li>While recording: Press SPACE to pause, then drag to pan or scroll to zoom!</li>
+                </ol>
+            </div>
+
+            <!-- Setup -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Setup</h2>
+                <div>
+                    <label for="fieldUpload" class="custom-file-upload w-full text-center">
+                        <span id="fieldFileName">1. Upload Field Image/PDF</span>
+                        <input id="fieldUpload" type="file" class="hidden" accept="image/*,application/pdf">
+                    </label>
+                </div>
+                <div>
+                    <label for="robotUpload" class="custom-file-upload w-full text-center">
+                        <span id="robotFileName">2. Upload Initial Robot Sprite</span>
+                        <input id="robotUpload" type="file" class="hidden" accept="image/*">
+                    </label>
+                </div>
+                <div>
+                    <label for="robotSizeSlider" class="block mb-2 font-medium">Robot Size: <span id="robotSizeValue" class="font-bold text-sky-400">50px</span></label>
+                    <input id="robotSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Waypoint Editor -->
+            <div id="waypointEditor" class="space-y-4 hidden">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Edit Waypoint <span id="waypointId" class="text-sky-400"></span></h2>
+                <div>
+                    <label for="heading" class="block mb-2 font-medium">Heading: <span id="headingValue" class="font-bold text-sky-400">0°</span></label>
+                    <input id="heading" type="range" min="0" max="360" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <!-- Stop Motion Actions -->
+                <div class="space-y-3">
+                    <h3 class="text-lg font-semibold">Stop-Motion Actions</h3>
+                    <div id="stopActionsList" class="space-y-2 bg-gray-700/50 p-3 rounded-lg">
+                        <!-- Actions will be dynamically inserted here -->
+                    </div>
+                    <input id="stopActionSpriteUpload" type="file" class="hidden" accept="image/*">
+                    <button id="addStopActionBtn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                        + Add Sprite Action
+                    </button>
+                    <button id="duplicateActionBtn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                        + Duplicate Last Action
+                    </button>
+                </div>
+
+                <button id="deleteWaypoint" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    Delete Waypoint
+                </button>
+            </div>
+
+            <!-- Animation Controls -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Animation</h2>
+                <div class="flex space-x-2">
+                    <button id="record" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Record</button>
+                    <button id="animate" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Animate</button>
+                    <button id="stop" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Stop</button>
+                </div>
+                
+                <!-- Video Export Options (initially hidden) -->
+                <div id="exportOptions" class="space-y-2 hidden">
+                    <div class="flex space-x-2">
+                        <button id="downloadWebm" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">Download WebM</button>
+                        <button id="convertGif" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">Convert to GIF</button>
+                    </div>
+                </div>
+                
+                <p id="gifStatus" class="text-xs text-gray-400 mt-1 hidden"></p>
+                <button id="clear" class="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Clear All Waypoints</button>
+            </div>
+            
+            <!-- Pan/Zoom Controls (shown during recording) -->
+            <div id="panZoomControls" class="space-y-4 hidden">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Recording Controls</h2>
+                <div class="bg-blue-900/30 p-4 rounded-lg text-sm space-y-2">
+                    <p class="font-semibold text-blue-300">Press SPACE to pause/resume animation</p>
+                    <p class="text-gray-300">While paused:</p>
+                    <ul class="list-disc list-inside ml-2 space-y-1 text-gray-400">
+                        <li>Drag canvas to pan</li>
+                        <li>Mouse wheel to zoom</li>
+                        <li>Click "Reset View" to reset</li>
+                    </ul>
+                </div>
+                <button id="resetView" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    Reset View
+                </button>
+                <div class="bg-gray-700/50 p-3 rounded-lg text-xs">
+                    <p><strong>Pan:</strong> <span id="panInfo">0, 0</span></p>
+                    <p><strong>Zoom:</strong> <span id="zoomInfo">100%</span></p>
+                    <p><strong>Status:</strong> <span id="pauseStatus" class="text-green-400">Recording</span></p>
+                </div>
+            </div>
+
+             <!-- Info -->
+            <div id="infoBox" class="bg-yellow-900/50 p-4 rounded-lg text-sm text-yellow-200 hidden">
+                 <p id="infoText"></p>
+            </div>
+
+        </div>
+    </aside>
+
+    <!-- Rename Modal -->
+    <div id="renameModal" class="fixed inset-0 z-50 bg-black/60 hidden items-center justify-center">
+        <div class="bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-11/12 max-w-md p-5">
+            <h3 class="text-lg font-semibold text-white">Save recording</h3>
+            <p class="text-sm text-gray-300 mt-1">Choose a filename. This will be used for WebM and GIF.</p>
+            <label class="block text-sm text-gray-300 mt-4 mb-1" for="renameInput">File name (no extension)</label>
+            <input id="renameInput" type="text" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-600" placeholder="robot-animation" />
+            <p class="text-xs text-gray-400 mt-2">Will be saved as .webm and reused for .gif.</p>
+            <div class="flex flex-wrap justify-end gap-2 mt-5">
+                <button id="renameCancel" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-100">Cancel</button>
+                <button id="renameSaveWebM" class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-700 text-white font-semibold">Save as WebM</button>
+                <button id="renameSaveGIF" class="px-4 py-2 rounded bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold">Save as GIF</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // Optional Cloudinary client-only fallback (no server needed)
+    // Cloudinary is the PRIMARY method for GIF conversion (more reliable than FFmpeg.wasm)
+    // 1) Create a free Cloudinary account at https://cloudinary.com
+    // 2) In Settings > Upload, create an UNSIGNED upload preset (e.g., 'unsigned')
+    // 3) Set cloudName and uploadPreset below, and set enabled: true
+    const cloudinaryConfig = {
+        enabled: true, // Set to true to use Cloudinary for GIF conversion
+        cloudName: 'dticademn', // your Cloudinary cloud name
+        uploadPreset: 'unsigned', // your unsigned preset name
+    };
+    const canvas = document.getElementById('robotCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const fieldUpload = document.getElementById('fieldUpload');
+    const robotUpload = document.getElementById('robotUpload');
+    const stopActionSpriteUpload = document.getElementById('stopActionSpriteUpload');
+    
+    const fieldFileName = document.getElementById('fieldFileName');
+    const robotFileName = document.getElementById('robotFileName');
+
+    const headingSlider = document.getElementById('heading');
+    const headingValue = document.getElementById('headingValue');
+    const animateBtn = document.getElementById('animate');
+    const stopBtn = document.getElementById('stop');
+    const clearBtn = document.getElementById('clear');
+    const deleteWaypointBtn = document.getElementById('deleteWaypoint');
+    const recordBtn = document.getElementById('record');
+    const convertGifBtn = document.getElementById('convertGif');
+    const downloadWebmBtn = document.getElementById('downloadWebm');
+    const exportOptions = document.getElementById('exportOptions');
+    const gifStatus = document.getElementById('gifStatus');
+    // Rename modal elements
+    const renameModal = document.getElementById('renameModal');
+    const renameInput = document.getElementById('renameInput');
+    const renameSaveWebMBtn = document.getElementById('renameSaveWebM');
+    const renameSaveGIFBtn = document.getElementById('renameSaveGIF');
+    const renameCancelBtn = document.getElementById('renameCancel');
+    
+    const waypointEditor = document.getElementById('waypointEditor');
+    const waypointId = document.getElementById('waypointId');
+    const infoBox = document.getElementById('infoBox');
+    const infoText = document.getElementById('infoText');
+    const stopActionsList = document.getElementById('stopActionsList');
+    const addStopActionBtn = document.getElementById('addStopActionBtn');
+    const duplicateActionBtn = document.getElementById('duplicateActionBtn');
+    const robotSizeSlider = document.getElementById('robotSizeSlider');
+    const robotSizeValue = document.getElementById('robotSizeValue');
+    
+    const panZoomControls = document.getElementById('panZoomControls');
+    const resetViewBtn = document.getElementById('resetView');
+    const panInfo = document.getElementById('panInfo');
+    const zoomInfo = document.getElementById('zoomInfo');
+    const pauseStatus = document.getElementById('pauseStatus');
+
+
+    let fieldImage = null;
+    let robotSprites = []; // Global store for all unique sprite images
+    let waypoints = [];
+    let selectedWaypointIndex = -1;
+    let animationFrameId = null;
+    let robotSize = 50; // Visual size of the robot on canvas
+
+    // --- Recording State ---
+    let mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+    let lastRecordingBlob = null; // Most recent WebM blob for optional GIF conversion
+    let lastRecordingBaseName = 'robot-animation'; // Carries over to GIF name
+
+    // --- FFmpeg (wasm) state ---
+    let ffmpegInstance = null;
+    let ffmpegLoaded = false;
+
+    // --- Pan/Zoom State ---
+    let isPaused = false;
+    let panX = 0;
+    let panY = 0;
+    let zoomLevel = 1;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartPanX = 0;
+    let dragStartPanY = 0;
+
+    // --- State Management ---
+    let robotState = {
+        x: 0,
+        y: 0,
+        heading: 0,
+        spriteIndex: 0,
+        segmentIndex: 0, // The waypoint we are currently at, or have just left
+        progress: 0, // Progress along the current segment
+        speed: 2, // pixels per frame
+        rotationSpeed: 3, // degrees per frame
+        phase: 'idle', // idle, rotating, dwelling, moving
+        actionIndex: 0, // which stopAction we are on
+        dwellCounter: 0, // frames spent on the current action
+    };
+
+    // --- Initialization and Event Listeners ---
+    function init() {
+        // Initialize PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        fieldUpload.addEventListener('change', handleFieldUpload);
+        
+        robotUpload.addEventListener('change', handleFileUpload(img => {
+            if (robotSprites.length === 0) {
+                 robotSprites.push(img);
+            } else {
+                robotSprites[0] = img; // Replace the default sprite
+            }
+            robotFileName.textContent = robotUpload.files[0].name;
+            draw();
+        }, 'robot'));
+
+        stopActionSpriteUpload.addEventListener('change', handleFileUpload(img => {
+             if (selectedWaypointIndex !== -1) {
+                robotSprites.push(img);
+                const newSpriteIndex = robotSprites.length - 1;
+                waypoints[selectedWaypointIndex].stopActions.push({
+                    spriteIndex: newSpriteIndex,
+                    duration: 30,
+                    rotation: 0 // Default rotation
+                });
+                renderStopActions(selectedWaypointIndex);
+                draw();
+            }
+        }, 'stop action sprite'));
+
+        canvas.addEventListener('click', handleCanvasClick);
+        headingSlider.addEventListener('input', handleHeadingChange);
+        addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
+        duplicateActionBtn.addEventListener('click', handleDuplicateAction);
+        robotSizeSlider.addEventListener('input', handleRobotSizeChange);
+        animateBtn.addEventListener('click', startAnimation);
+        stopBtn.addEventListener('click', stopAnimation);
+        clearBtn.addEventListener('click', clearWaypoints);
+        deleteWaypointBtn.addEventListener('click', deleteSelectedWaypoint);
+        recordBtn.addEventListener('click', toggleRecording);
+        if (convertGifBtn) {
+            convertGifBtn.addEventListener('click', convertRecordedToGIF);
+        }
+        if (downloadWebmBtn) {
+            downloadWebmBtn.addEventListener('click', () => {
+                const base = lastRecordingBaseName || 'robot-animation';
+                downloadRecordedWithName(base);
+            });
+        }
+        renameSaveWebMBtn.addEventListener('click', onRenameSaveWebM);
+        renameSaveGIFBtn.addEventListener('click', onRenameSaveGIF);
+        renameCancelBtn.addEventListener('click', onRenameCancel);
+        renameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onRenameSaveWebM(); }
+            if (e.key === 'Escape') { e.preventDefault(); onRenameCancel(); }
+        });
+        
+        // Pan/Zoom event listeners
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mouseleave', handleMouseUp);
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        document.addEventListener('keydown', handleKeyDown);
+        resetViewBtn.addEventListener('click', resetView);
+    }
+
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        const containerRect = container.getBoundingClientRect();
+        let newWidth = containerRect.width;
+        let newHeight = containerRect.height;
+        if (fieldImage) {
+            const aspectRatio = fieldImage.width / fieldImage.height;
+            if (newWidth / newHeight > aspectRatio) {
+                newWidth = newHeight * aspectRatio;
+            } else {
+                newHeight = newWidth / aspectRatio;
+            }
+        } else {
+            newWidth = Math.min(newWidth, 800);
+            newHeight = Math.min(newHeight, 600);
+        }
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        draw();
+    }
+
+    // --- File Handling ---
+    function handleFieldUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.type === 'application/pdf') {
+            loadPDFAsImage(file);
+        } else if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    fieldImage = img;
+                    fieldFileName.textContent = file.name;
+                    resizeCanvas();
+                    draw();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            showInfo('Error: Please upload a valid image or PDF file.');
+        }
+    }
+
+    async function loadPDFAsImage(file) {
+        if (typeof pdfjsLib === 'undefined') {
+            showInfo('Error: PDF support is not available.');
+            return;
+        }
+        
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdf.getPage(1); // Get first page
+            
+            const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = viewport.width;
+            tempCanvas.height = viewport.height;
+            
+            await page.render({
+                canvasContext: tempCtx,
+                viewport: viewport
+            }).promise;
+            
+            // Convert canvas to image
+            const img = new Image();
+            img.onload = function() {
+                fieldImage = img;
+                fieldFileName.textContent = file.name;
+                resizeCanvas();
+                draw();
+            };
+            img.src = tempCanvas.toDataURL();
+            
+        } catch (error) {
+            console.error('Error loading PDF:', error);
+            showInfo('Error: Failed to load PDF. Please try an image file instead.');
+        }
+    }
+
+    function handleFileUpload(callback, type) {
+        return function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')){
+                showInfo(`Error: Please upload a valid image file for the ${type}.`);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() { callback(img); };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // --- User Interaction Handlers ---
+    function handleCanvasClick(e) {
+        if (animationFrameId || isRecording) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+
+        if (clickedWaypointIndex !== -1) {
+            selectWaypoint(clickedWaypointIndex);
+        } else {
+            if (!fieldImage || robotSprites.length === 0) {
+                showInfo("Please upload a field image and initial robot sprite first.");
+                return;
+            }
+            const lastWaypoint = waypoints[waypoints.length - 1];
+            const lastSpriteIndex = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].spriteIndex : 0;
+            const lastRotation = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].rotation : 0;
+            
+            waypoints.push({
+                x, y,
+                heading: lastWaypoint ? lastWaypoint.heading : 0,
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation }],
+            });
+            selectWaypoint(waypoints.length - 1);
+        }
+        draw();
+    }
+    
+    function selectWaypoint(index) {
+        selectedWaypointIndex = index;
+        const wp = waypoints[index];
+        waypointEditor.classList.remove('hidden');
+        waypointId.textContent = `#${index + 1}`;
+        headingSlider.value = wp.heading;
+        headingValue.textContent = `${wp.heading}°`;
+        renderStopActions(index);
+    }
+
+    function handleRobotSizeChange(e) {
+        robotSize = parseInt(e.target.value);
+        robotSizeValue.textContent = `${robotSize}px`;
+        draw(); // Redraw the canvas to show the new preview size
+    }
+
+    function handleDuplicateAction() {
+        if (selectedWaypointIndex !== -1) {
+            const wp = waypoints[selectedWaypointIndex];
+            if (wp.stopActions.length > 0) {
+                const lastAction = wp.stopActions[wp.stopActions.length - 1];
+                wp.stopActions.push({
+                    spriteIndex: lastAction.spriteIndex,
+                    duration: lastAction.duration,
+                    rotation: lastAction.rotation
+                });
+                renderStopActions(selectedWaypointIndex);
+                draw();
+            }
+        }
+    }
+
+    function renderStopActions(waypointIndex) {
+        stopActionsList.innerHTML = '';
+        const wp = waypoints[waypointIndex];
+        if (!wp.stopActions || wp.stopActions.length === 0) {
+            stopActionsList.innerHTML = `<p class="text-xs text-gray-400">No actions defined. Add one!</p>`;
+            return;
+        }
+
+        wp.stopActions.forEach((action, actionIndex) => {
+            const actionEl = document.createElement('div');
+            actionEl.className = 'flex flex-col space-y-2 bg-gray-800 p-2 rounded mb-2';
+
+            const spriteImg = robotSprites[action.spriteIndex];
+            const imgSrc = spriteImg ? spriteImg.src : 'https://placehold.co/32x32/374151/9ca3af?text=?';
+            
+            // Ensure rotation exists (for backwards compatibility)
+            if (action.rotation === undefined) action.rotation = 0;
+
+            actionEl.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <img src="${imgSrc}" class="w-8 h-8 rounded border border-gray-600 object-contain">
+                    <span class="text-xs font-semibold text-sky-400">Action ${actionIndex + 1}</span>
+                    <button class="ml-auto text-red-400 hover:text-red-300 text-xl font-bold">&times;</button>
+                </div>
+                <label class="text-xs flex items-center space-x-2">
+                    <span class="w-24">Duration:</span>
+                    <input type="number" value="${action.duration}" min="1" class="bg-gray-900 rounded flex-1 p-1 text-center duration-input">
+                    <span class="text-gray-400">frames</span>
+                </label>
+                <label class="text-xs flex items-center space-x-2">
+                    <span class="w-24">Rotation:</span>
+                    <input type="range" min="0" max="360" value="${action.rotation}" class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer rotation-slider">
+                    <span class="text-sky-400 font-bold w-12 text-center rotation-value">${action.rotation}°</span>
+                </label>
+            `;
+            
+            const durationInput = actionEl.querySelector('.duration-input');
+            const rotationSlider = actionEl.querySelector('.rotation-slider');
+            const rotationValue = actionEl.querySelector('.rotation-value');
+            const deleteBtn = actionEl.querySelector('button');
+
+            durationInput.addEventListener('change', (e) => {
+                wp.stopActions[actionIndex].duration = Math.max(1, parseInt(e.target.value) || 1);
+            });
+
+            rotationSlider.addEventListener('input', (e) => {
+                const rotation = parseInt(e.target.value);
+                wp.stopActions[actionIndex].rotation = rotation;
+                rotationValue.textContent = `${rotation}°`;
+                draw();
+            });
+
+            deleteBtn.addEventListener('click', () => {
+                if (wp.stopActions.length > 1) {
+                    wp.stopActions.splice(actionIndex, 1);
+                    renderStopActions(waypointIndex);
+                    draw();
+                } else {
+                    showInfo("A waypoint must have at least one action.");
+                }
+            });
+
+            stopActionsList.appendChild(actionEl);
+        });
+    }
+    
+    function deselectWaypoint() {
+        selectedWaypointIndex = -1;
+        waypointEditor.classList.add('hidden');
+    }
+
+    function handleHeadingChange(e) {
+        if (selectedWaypointIndex !== -1) {
+            const newHeading = parseInt(e.target.value);
+            waypoints[selectedWaypointIndex].heading = newHeading;
+            headingValue.textContent = `${newHeading}°`;
+            draw();
+        }
+    }
+    
+    function deleteSelectedWaypoint() {
+        if (selectedWaypointIndex !== -1) {
+            waypoints.splice(selectedWaypointIndex, 1);
+            deselectWaypoint();
+            if(waypoints.length > 0) selectWaypoint(waypoints.length - 1);
+            draw();
+        }
+    }
+
+    function clearWaypoints() {
+        if (confirm('Are you sure you want to clear all waypoints?')) {
+            waypoints = [];
+            deselectWaypoint();
+            draw();
+        }
+    }
+    
+    function showInfo(message) {
+        infoText.textContent = message;
+        infoBox.classList.remove('hidden');
+        setTimeout(() => infoBox.classList.add('hidden'), 3000);
+    }
+
+    // --- Pan/Zoom Functions ---
+    function handleMouseDown(e) {
+        if (!isPaused || !isRecording) return;
+        isDragging = true;
+        const rect = canvas.getBoundingClientRect();
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        dragStartPanX = panX;
+        dragStartPanY = panY;
+        canvas.style.cursor = 'grabbing';
+    }
+
+    function handleMouseMove(e) {
+        if (!isDragging || !isPaused) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        panX = dragStartPanX + dx;
+        panY = dragStartPanY + dy;
+        updatePanZoomInfo();
+        drawWithTransform();
+    }
+
+    function handleMouseUp(e) {
+        if (isDragging) {
+            isDragging = false;
+            canvas.style.cursor = isPaused ? 'grab' : 'default';
+        }
+    }
+
+    function handleWheel(e) {
+        if (!isPaused || !isRecording) return;
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.max(0.5, Math.min(3, zoomLevel * delta));
+        
+        // Zoom towards mouse position
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        panX = mouseX - (mouseX - panX) * (newZoom / zoomLevel);
+        panY = mouseY - (mouseY - panY) * (newZoom / zoomLevel);
+        zoomLevel = newZoom;
+        
+        updatePanZoomInfo();
+        drawWithTransform();
+    }
+
+    function handleKeyDown(e) {
+        if (e.code === 'Space' && isRecording) {
+            e.preventDefault();
+            togglePause();
+        }
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        canvas.style.cursor = isPaused ? 'grab' : 'default';
+        pauseStatus.textContent = isPaused ? 'PAUSED' : 'Recording';
+        pauseStatus.className = isPaused ? 'text-yellow-400' : 'text-green-400';
+    }
+
+    function resetView() {
+        panX = 0;
+        panY = 0;
+        zoomLevel = 1;
+        updatePanZoomInfo();
+        drawWithTransform();
+    }
+
+    function updatePanZoomInfo() {
+        panInfo.textContent = `${Math.round(panX)}, ${Math.round(panY)}`;
+        zoomInfo.textContent = `${Math.round(zoomLevel * 100)}%`;
+    }
+
+    function drawWithTransform() {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(panX, panY);
+        ctx.scale(zoomLevel, zoomLevel);
+        
+        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+        drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
+        
+        ctx.restore();
+    }
+
+    // --- Drawing Functions ---
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+
+        if (waypoints.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(waypoints[0].x, waypoints[0].y);
+            for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        waypoints.forEach((wp, i) => {
+            ctx.beginPath();
+            ctx.arc(wp.x, wp.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = i === selectedWaypointIndex ? '#38bdf8' : 'rgba(255, 255, 0, 0.8)';
+            ctx.fill();
+            ctx.strokeStyle = i === selectedWaypointIndex ? '#fff' : '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const lastAction = wp.stopActions[wp.stopActions.length - 1];
+            if (lastAction && robotSprites[lastAction.spriteIndex]) {
+                 const rotation = wp.heading + (lastAction.rotation || 0);
+                 drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, 0.5);
+            }
+        });
+    }
+
+    function drawRobot(sprite, x, y, heading, opacity = 1.0) {
+        if (!sprite) return;
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.translate(x, y);
+        ctx.rotate(heading * Math.PI / 180);
+        ctx.drawImage(sprite, -robotSize / 2, -robotSize / 2, robotSize, robotSize);
+        ctx.restore();
+    }
+
+    // --- Recording Logic ---
+    function toggleRecording() {
+        if (!isRecording) startRecording();
+        else stopRecordingAndSave();
+    }
+
+    function startRecording() {
+        if (waypoints.length < 2) {
+            showInfo("Add at least two waypoints to record.");
+            return;
+        }
+        if (!window.MediaRecorder) {
+            showInfo("Sorry, your browser does not support video recording.");
+            return;
+        }
+        const stream = canvas.captureStream(30);
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        recordedChunks = [];
+    // If present, disable export buttons until this recording finishes
+    if (convertGifBtn) convertGifBtn.disabled = true;
+    if (downloadWebmBtn) downloadWebmBtn.disabled = true;
+    if (exportOptions) exportOptions.classList.add('hidden');
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            lastRecordingBlob = blob;
+            // Enable export buttons now that we have a recording (if present)
+            if (convertGifBtn) convertGifBtn.disabled = false;
+            if (downloadWebmBtn) downloadWebmBtn.disabled = false;
+            if (exportOptions) exportOptions.classList.remove('hidden');
+            // Open modal to choose filename and then trigger download
+            openRenameModal();
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        isPaused = false;
+        panX = 0;
+        panY = 0;
+        zoomLevel = 1;
+        recordBtn.textContent = 'Stop Recording';
+        recordBtn.classList.replace('bg-red-600', 'bg-green-500');
+        recordBtn.classList.replace('hover:bg-red-700', 'hover:bg-green-600');
+        panZoomControls.classList.remove('hidden');
+        updatePanZoomInfo();
+        startAnimation();
+    }
+    
+    function stopRecordingAndSave() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+        isRecording = false;
+        isPaused = false;
+        panX = 0;
+        panY = 0;
+        zoomLevel = 1;
+        canvas.style.cursor = 'default';
+        recordBtn.textContent = 'Record';
+        recordBtn.classList.replace('bg-green-500', 'bg-red-600');
+        recordBtn.classList.replace('hover:bg-green-600', 'hover:bg-red-700');
+        panZoomControls.classList.add('hidden');
+        stopAnimation();
+    }
+
+    // --- GIF Conversion (ffmpeg.wasm) ---
+    // CDN candidates for robustness
+    const FFCDN_CANDIDATES = [
+        // Use CDN versions for reliability - they include all necessary worker files
+        {
+            script: 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js',
+            coreBase: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+        },
+        {
+            script: 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js',
+            coreBase: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd'
+        }
+    ];
+    let chosenFfmpegCoreBase = null;
+
+    async function ensureFFmpegLoaded() {
+        if (ffmpegLoaded) return;
+        
+        // Debug: Check what's available in the global scope
+        console.log('Checking for FFmpeg availability...');
+        console.log('window.FFmpeg:', window.FFmpeg);
+        console.log('window.FFmpegWASM:', window.FFmpegWASM);
+        
+        // Check for different possible global names and patterns
+        let createFFmpegFn = null;
+        
+        if (window.createFFmpeg) {
+            createFFmpegFn = window.createFFmpeg;
+            console.log('Using window.createFFmpeg');
+        } else if (window.FFmpeg && typeof window.FFmpeg === 'function') {
+            // FFmpeg might be the constructor itself
+            createFFmpegFn = () => new window.FFmpeg();
+            console.log('Using window.FFmpeg constructor');
+        } else if (window.FFmpeg && window.FFmpeg.createFFmpeg) {
+            createFFmpegFn = window.FFmpeg.createFFmpeg;
+            console.log('Using window.FFmpeg.createFFmpeg');
+        } else if (window.FFmpegWASM && window.FFmpegWASM.createFFmpeg) {
+            createFFmpegFn = window.FFmpegWASM.createFFmpeg;
+            console.log('Using window.FFmpegWASM.createFFmpeg');
+        } else if (window.FFmpegWASM && window.FFmpegWASM.FFmpeg) {
+            const FFmpegClass = window.FFmpegWASM.FFmpeg;
+            if (typeof FFmpegClass === 'function') {
+                createFFmpegFn = (options) => new FFmpegClass(options);
+                console.log('Using window.FFmpegWASM.FFmpeg constructor');
+            }
+        }
+        
+        if (!createFFmpegFn) {
+            console.log('FFmpeg not available in window, attempting to load dynamically...');
+            await loadFfmpegScriptIfNeeded();
+        }
+        
+        // Check again after loading attempt and normalize the interface
+        if (window.createFFmpeg) {
+            window.FFmpeg = { createFFmpeg: window.createFFmpeg };
+        } else if (window.FFmpegWASM && window.FFmpegWASM.createFFmpeg) {
+            window.FFmpeg = window.FFmpegWASM;
+        } else if (window.FFmpegWASM && window.FFmpegWASM.FFmpeg) {
+            const FFmpegClass = window.FFmpegWASM.FFmpeg;
+            window.FFmpeg = { 
+                createFFmpeg: (options) => new FFmpegClass(options)
+            };
+        }
+        
+        if (!window.FFmpeg || !window.FFmpeg.createFFmpeg) {
+            console.error('FFmpeg library not available after loading attempts');
+            throw new Error('FFmpeg not available');
+        }
+
+        const coreBasesToTry = [];
+        if (chosenFfmpegCoreBase) coreBasesToTry.push(chosenFfmpegCoreBase);
+        // Add all candidates to try (dedup)
+        for (const c of FFCDN_CANDIDATES) {
+            if (!coreBasesToTry.includes(c.coreBase)) coreBasesToTry.push(c.coreBase);
+        }
+
+        let lastErr = null;
+        setGifStatus('Loading FFmpeg (first time can take ~10–20s)...', true);
+        for (const coreBase of coreBasesToTry) {
+            try {
+                console.log('Trying FFmpeg with coreBase:', coreBase);
+                // Use the normalized FFmpeg interface
+                if (!window.FFmpeg || !window.FFmpeg.createFFmpeg) {
+                    throw new Error('FFmpeg interface not available');
+                }
+                
+                ffmpegInstance = window.FFmpeg.createFFmpeg({
+                    log: true,
+                    corePath: `${coreBase}/ffmpeg-core.js`
+                });
+                await ffmpegInstance.load();
+                console.log('FFmpeg loaded successfully with coreBase:', coreBase);
+                ffmpegLoaded = true;
+                setGifStatus('FFmpeg ready.', false);
+                return;
+            } catch (e) {
+                console.warn('FFmpeg load failed for coreBase:', coreBase, e);
+                lastErr = e;
+            }
+        }
+        setGifStatus('');
+        throw (lastErr || new Error('FFmpeg not available'));
+    }
+
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('Failed to load script: ' + src));
+            document.head.appendChild(s);
+        });
+    }
+
+    async function loadFfmpegScriptIfNeeded() {
+        // Check if FFmpeg is already available in any form
+        const isFFmpegAvailable = () => {
+            return (window.createFFmpeg) ||
+                   (window.FFmpeg && window.FFmpeg.createFFmpeg) ||
+                   (window.FFmpegWASM && (window.FFmpegWASM.createFFmpeg || window.FFmpegWASM.FFmpeg));
+        };
+        
+        if (isFFmpegAvailable()) {
+            console.log('FFmpeg already available from HTML script tag or previous load');
+            return;
+        }
+        
+        console.log('Attempting to load FFmpeg dynamically...');
+        for (const candidate of FFCDN_CANDIDATES) {
+            try {
+                console.log('Trying to load FFmpeg from:', candidate.script);
+                await loadScript(candidate.script);
+                if (isFFmpegAvailable()) {
+                    console.log('Successfully loaded FFmpeg from:', candidate.script);
+                    chosenFfmpegCoreBase = candidate.coreBase;
+                    return;
+                }
+            } catch (e) {
+                console.warn('Failed to load FFmpeg from', candidate.script, e);
+            }
+        }
+        console.error('All FFmpeg loading attempts failed');
+    }
+
+    function setGifStatus(text, showSpinner = false) {
+        gifStatus.textContent = text || '';
+        gifStatus.classList.toggle('hidden', !text);
+    }
+
+    function openRenameModal() {
+        // Seed with last used or default
+        renameInput.value = lastRecordingBaseName || 'robot-animation';
+        renameModal.classList.remove('hidden');
+        // Use flex to center
+        renameModal.classList.add('flex');
+        // Focus input after paint
+        setTimeout(() => { renameInput.focus(); renameInput.select(); }, 0);
+    }
+
+    function closeRenameModal() {
+        renameModal.classList.add('hidden');
+        renameModal.classList.remove('flex');
+    }
+
+    function downloadRecordedWithName(baseName) {
+        if (!lastRecordingBlob) return;
+        const url = URL.createObjectURL(lastRecordingBlob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${baseName}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+
+    function onRenameSaveWebM() {
+        let name = sanitizeFilename(renameInput.value);
+        if (!name) name = 'robot-animation';
+        lastRecordingBaseName = name;
+        downloadRecordedWithName(lastRecordingBaseName);
+        closeRenameModal();
+    }
+
+    function onRenameSaveGIF() {
+        let name = sanitizeFilename(renameInput.value);
+        if (!name) name = 'robot-animation';
+        lastRecordingBaseName = name;
+        closeRenameModal();
+        // Trigger GIF conversion using the chosen name
+        convertRecordedToGIF();
+    }
+
+    function onRenameCancel() {
+        // Cancel: do not download anything; just close the modal and return
+        closeRenameModal();
+    }
+
+    async function convertRecordedToGIF() {
+        try {
+            if (!lastRecordingBlob) {
+                showInfo('No recording available. Record first.');
+                return;
+            }
+            if (convertGifBtn) convertGifBtn.disabled = true;
+            
+            console.log('Starting GIF conversion process...');
+            console.log('Recording blob size:', lastRecordingBlob.size, 'bytes');
+            
+            // Try Cloudinary first if configured (more reliable)
+            if (cloudinaryConfig.enabled && cloudinaryConfig.cloudName && cloudinaryConfig.uploadPreset) {
+                console.log('Using Cloudinary for GIF conversion (primary method)...');
+                setGifStatus('Converting via Cloudinary...', false);
+                await convertRecordedToGifViaCloudinary();
+                return;
+            }
+            
+            // Fallback to FFmpeg if Cloudinary is not configured
+            setGifStatus('Preparing local FFmpeg converter...');
+            try {
+                await ensureFFmpegLoaded();
+                console.log('FFmpeg loaded successfully, proceeding with local conversion...');
+            } catch (e) {
+                console.warn('FFmpeg load failed and no Cloudinary configured', e);
+                setGifStatus('GIF conversion failed: FFmpeg unavailable and Cloudinary not configured.', false);
+                showInfo('GIF conversion failed. FFmpeg could not load and Cloudinary is not configured.');
+                throw e;
+            }
+
+            // Write input
+            setGifStatus('Preparing input...');
+            const inputName = 'input.webm';
+            const paletteName = 'palette.png';
+            const outputName = 'output.gif';
+            // Clean up any previous run
+            try { ffmpegInstance.FS('unlink', inputName); } catch (e) {}
+            try { ffmpegInstance.FS('unlink', paletteName); } catch (e) {}
+            try { ffmpegInstance.FS('unlink', outputName); } catch (e) {}
+
+            const data = await lastRecordingBlob.arrayBuffer();
+            ffmpegInstance.FS('writeFile', inputName, new Uint8Array(data));
+
+            // Recommended two-pass palette method for better colors/size
+            const fps = 12; // adjust for size/quality
+            const width = 480; // scale width, keep aspect
+
+            setGifStatus('Generating palette...');
+            await ffmpegInstance.run(
+                '-i', inputName,
+                '-vf', `fps=${fps},scale=${width}:-1:flags=lanczos,palettegen=stats_mode=single`,
+                '-y', paletteName
+            );
+
+            setGifStatus('Creating GIF (this can take a bit)...');
+            await ffmpegInstance.run(
+                '-i', inputName,
+                '-i', paletteName,
+                '-filter_complex', `[0:v] fps=${fps},scale=${width}:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`,
+                '-loop', '0',
+                '-y', outputName
+            );
+
+            const out = ffmpegInstance.FS('readFile', outputName);
+            const gifBlob = new Blob([out.buffer], { type: 'image/gif' });
+            const url = URL.createObjectURL(gifBlob);
+
+            // Download the GIF
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${lastRecordingBaseName || 'robot-animation'}.gif`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            setGifStatus('GIF ready and downloaded.');
+        } catch (err) {
+            console.error(err);
+            showInfo('GIF conversion failed. See console for details.');
+            setGifStatus('GIF conversion failed.');
+        } finally {
+            if (convertGifBtn) convertGifBtn.disabled = false;
+        }
+    }
+
+    // --- Cloudinary fallback path (client-only, free tier friendly) ---
+    async function convertRecordedToGifViaCloudinary() {
+        try {
+            console.log('Starting Cloudinary conversion...');
+            console.log('Cloudinary config:', { ...cloudinaryConfig, uploadPreset: '[hidden]' });
+            
+            setGifStatus('Uploading to Cloudinary...');
+            const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/video/upload`;
+            console.log('Upload URL:', uploadUrl);
+            
+            const form = new FormData();
+            form.append('file', lastRecordingBlob, `${lastRecordingBaseName || 'robot-animation'}.webm`);
+            form.append('upload_preset', cloudinaryConfig.uploadPreset);
+            // Optional: set public_id to control the asset name in your media library
+            form.append('public_id', lastRecordingBaseName || 'robot-animation');
+
+            console.log('Uploading file of size:', lastRecordingBlob.size, 'bytes');
+            const res = await fetch(uploadUrl, { method: 'POST', body: form });
+            console.log('Upload response status:', res.status);
+            
+            if (!res.ok) {
+                const text = await res.text();
+                console.error('Cloudinary upload error response:', text);
+                throw new Error('Cloudinary upload failed: ' + text);
+            }
+            const data = await res.json();
+            console.log('Upload successful, response:', data);
+            
+            // Build a GIF transformation URL from the uploaded video
+            // Example transformation: fps 12, width 480, loop enabled
+            const basePublicId = data.public_id; // includes folder if any
+            const transformation = 'f_gif,fps_12,w_480,e_loop';
+            // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
+            const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
+
+            console.log('Generated GIF URL:', gifUrl);
+            setGifStatus('Generating GIF...');
+            
+            // First request may trigger generation. Fetch as blob so we can name it.
+            const gifResp = await fetch(gifUrl, { cache: 'no-store' });
+            console.log('GIF fetch response status:', gifResp.status);
+            
+            if (!gifResp.ok) {
+                const errorText = await gifResp.text();
+                console.error('GIF fetch error:', errorText);
+                throw new Error('Failed to retrieve GIF: ' + errorText);
+            }
+            const gifBlob = await gifResp.blob();
+            console.log('GIF blob size:', gifBlob.size, 'bytes');
+
+            const url = URL.createObjectURL(gifBlob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${lastRecordingBaseName || 'robot-animation'}.gif`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            console.log('GIF download initiated successfully');
+            setGifStatus('GIF ready and downloaded.');
+        } catch (e) {
+            console.error('Cloudinary GIF path failed', e);
+            setGifStatus('Cloudinary GIF conversion failed.');
+            showInfo('Cloudinary conversion failed. Please check your Cloudinary configuration (cloudName and uploadPreset) or network connection.');
+            throw e; // Re-throw so the main catch block can handle it
+        }
+    }
+
+    // --- Animation Logic ---
+    function startAnimation() {
+        if (waypoints.length < 2) {
+            if (!isRecording) showInfo("Add at least two waypoints to create a path.");
+            return;
+        }
+        if (animationFrameId) return;
+        deselectWaypoint();
+        
+        const firstWp = waypoints[0];
+        const firstAction = firstWp.stopActions[0];
+        robotState.segmentIndex = 0;
+        robotState.progress = 0;
+        robotState.x = firstWp.x;
+        robotState.y = firstWp.y;
+        robotState.heading = firstWp.heading;
+        robotState.spriteIndex = firstAction ? firstAction.spriteIndex : 0;
+        robotState.phase = 'rotating';
+        robotState.actionIndex = 0;
+        robotState.dwellCounter = 0;
+
+        animationLoop();
+    }
+
+    function stopAnimation() {
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+            draw();
+        }
+        if (isRecording) stopRecordingAndSave();
+    }
+
+    function animationLoop() {
+        if (robotState.phase === 'idle') {
+            stopAnimation();
+            if (!isRecording) showInfo("Animation finished!");
+            return;
+        }
+        
+        // Only update robot state if not paused
+        if (!isPaused) {
+            const currentWp = waypoints[robotState.segmentIndex];
+
+            if (robotState.phase === 'rotating') {
+                const angleDiff = ((((currentWp.heading - robotState.heading) % 360) + 540) % 360) - 180;
+                if (Math.abs(angleDiff) < robotState.rotationSpeed) {
+                    robotState.heading = currentWp.heading;
+                    robotState.phase = 'dwelling';
+                    robotState.actionIndex = 0;
+                    robotState.dwellCounter = 0;
+                } else {
+                    robotState.heading += Math.sign(angleDiff) * robotState.rotationSpeed;
+                }
+            } 
+            else if (robotState.phase === 'dwelling') {
+                const currentAction = currentWp.stopActions[robotState.actionIndex];
+                if (!currentAction) {
+                    if (robotState.segmentIndex >= waypoints.length - 1) {
+                        robotState.phase = 'idle';
+                    } else {
+                        robotState.phase = 'moving';
+                    }
+                } else {
+                    robotState.spriteIndex = currentAction.spriteIndex;
+                    robotState.heading = currentWp.heading + (currentAction.rotation || 0);
+                    robotState.dwellCounter++;
+                    if (robotState.dwellCounter >= currentAction.duration) {
+                        robotState.actionIndex++;
+                        robotState.dwellCounter = 0;
+                    }
+                }
+            }
+            else if (robotState.phase === 'moving') {
+                const startWp = currentWp;
+                const endWp = waypoints[robotState.segmentIndex + 1];
+                const dx = endWp.x - startWp.x;
+                const dy = endWp.y - startWp.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+
+                // Set heading and sprite based on the waypoint we just left
+                const lastAction = startWp.stopActions[startWp.stopActions.length - 1];
+                robotState.heading = startWp.heading + (lastAction.rotation || 0);
+                robotState.spriteIndex = lastAction.spriteIndex;
+
+                if (distance > 0) {
+                    robotState.progress += robotState.speed;
+                    if (robotState.progress >= distance) {
+                        robotState.segmentIndex++;
+                        robotState.progress = 0;
+                        robotState.x = endWp.x;
+                        robotState.y = endWp.y;
+                        robotState.phase = 'rotating';
+                    } else {
+                        const progressRatio = robotState.progress / distance;
+                        robotState.x = startWp.x + dx * progressRatio;
+                        robotState.y = startWp.y + dy * progressRatio;
+                    }
+                } else { // Waypoints are on top of each other
+                    robotState.segmentIndex++;
+                    robotState.phase = 'rotating';
+                }
+            }
+        }
+
+        // Always render (even when paused, to show pan/zoom changes)
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(panX, panY);
+        ctx.scale(zoomLevel, zoomLevel);
+        
+        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+        drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
+        
+        ctx.restore();
+
+        animationFrameId = requestAnimationFrame(animationLoop);
+    }
+    
+    // Simple filename sanitizer: keep letters, numbers, space, underscore, dash, dot
+    function sanitizeFilename(name) {
+        if (!name) return '';
+        let n = String(name).trim();
+        n = n.replace(/[^a-zA-Z0-9 _.-]/g, '_'); // invalid chars -> _
+        n = n.replace(/\s+/g, ' '); // collapse spaces
+        n = n.replace(/^[ .]+|[ .]+$/g, ''); // trim dots/spaces
+        if (!n) return '';
+        return n.substring(0, 128);
+    }
+
+    init();
+</script>
+</body>
+</html>

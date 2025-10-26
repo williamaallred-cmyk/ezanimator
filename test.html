@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Animation Maker Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+        .test-section { margin: 20px 0; padding: 15px; background: white; border-radius: 8px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>Animation Maker Testing Guide</h1>
+    
+    <div class="test-section">
+        <h2>Test Steps</h2>
+        <ol>
+            <li><strong>Upload Test Files:</strong>
+                <ul>
+                    <li>Field Image: <a href="test-field.svg" target="_blank">test-field.svg</a></li>
+                    <li>Robot Sprite: <a href="test-robot.svg" target="_blank">test-robot.svg</a></li>
+                </ul>
+            </li>
+            <li><strong>Create Animation:</strong>
+                <ul>
+                    <li>Click on the field to add at least 2 waypoints</li>
+                    <li>Adjust headings and add actions as desired</li>
+                </ul>
+            </li>
+            <li><strong>Test Recording:</strong>
+                <ul>
+                    <li>Click "Record" to start recording</li>
+                    <li>Animation should start automatically</li>
+                    <li>Press SPACE to pause and test pan/zoom</li>
+                    <li>Click "Stop Recording" when done</li>
+                </ul>
+            </li>
+            <li><strong>Test Export:</strong>
+                <ul>
+                    <li>Modal should appear asking for filename</li>
+                    <li>Try "Save as WebM" - should download WebM file</li>
+                    <li>Try "Save as GIF" - should convert and download GIF</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>Expected Behavior</h2>
+        <div class="status success">
+            <strong>✓ WebM Export:</strong> Should work reliably with browser MediaRecorder API
+        </div>
+        <div class="status warning">
+            <strong>⚠ GIF Conversion:</strong> Will try FFmpeg.wasm first, then fallback to Cloudinary if configured
+        </div>
+        <div class="status error">
+            <strong>✗ Known Issues:</strong> FFmpeg.wasm requires large download (~32MB) and may be slow
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Quick Access</h2>
+        <p><a href="index.html" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Open Animation Maker</a></p>
+    </div>
+    
+    <div class="test-section">
+        <h2>Troubleshooting</h2>
+        <ul>
+            <li><strong>GIF conversion fails:</strong> Check browser console for FFmpeg errors. Cloudinary fallback should work if configured.</li>
+            <li><strong>Recording doesn't start:</strong> Ensure browser supports MediaRecorder API (Chrome, Firefox, Safari)</li>
+            <li><strong>Files won't upload:</strong> Check file formats - images (.jpg, .png, .svg) and PDFs are supported</li>
+        </ul>
+    </div>
+</body>
+</html>

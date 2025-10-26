@@ -1,0 +1,10 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="600" fill="#2d5c3e"/>
+  <rect x="50" y="50" width="700" height="500" fill="#4a8c64" stroke="#ffffff" stroke-width="4"/>
+  <circle cx="400" cy="300" r="80" fill="#6aa884" stroke="#ffffff" stroke-width="2"/>
+  <text x="400" y="60" text-anchor="middle" fill="white" font-family="Arial" font-size="24">Test Field</text>
+  <rect x="100" y="100" width="80" height="80" fill="#8b4513" stroke="#ffffff" stroke-width="2"/>
+  <rect x="620" y="420" width="80" height="80" fill="#8b4513" stroke="#ffffff" stroke-width="2"/>
+  <line x1="100" y1="300" x2="700" y2="300" stroke="#ffffff" stroke-width="2" stroke-dasharray="10,5"/>
+  <line x1="400" y1="100" x2="400" y2="500" stroke="#ffffff" stroke-width="2" stroke-dasharray="10,5"/>
+</svg>

@@ -1,0 +1,19 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Node modules (if you add any)
+node_modules/
+
+# Optional: Don't commit large ffmpeg files if space is an issue
+# ffmpeg/core/*.wasm
