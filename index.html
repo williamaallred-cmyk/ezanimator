@@ -134,6 +134,26 @@
                 </button>
             </div>
 
+            <!-- View Controls -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">View Controls</h2>
+                <div class="bg-gray-700/50 p-3 rounded-lg text-sm space-y-2">
+                    <p class="text-gray-300">Pan & Zoom the canvas:</p>
+                    <ul class="list-disc list-inside ml-2 space-y-1 text-gray-400 text-xs">
+                        <li>Drag canvas to pan</li>
+                        <li>Mouse wheel to zoom</li>
+                        <li>Works anytime (not just during recording)</li>
+                    </ul>
+                </div>
+                <button id="resetViewPreview" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    Reset View
+                </button>
+                <div class="bg-gray-700/50 p-3 rounded-lg text-xs">
+                    <p><strong>Pan:</strong> <span id="panInfoPreview">0, 0</span></p>
+                    <p><strong>Zoom:</strong> <span id="zoomInfoPreview">100%</span></p>
+                </div>
+            </div>
+
             <!-- Animation Controls -->
             <div class="space-y-4">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Animation</h2>
@@ -255,6 +275,10 @@
     const panInfo = document.getElementById('panInfo');
     const zoomInfo = document.getElementById('zoomInfo');
     const pauseStatus = document.getElementById('pauseStatus');
+    
+    const resetViewPreviewBtn = document.getElementById('resetViewPreview');
+    const panInfoPreview = document.getElementById('panInfoPreview');
+    const zoomInfoPreview = document.getElementById('zoomInfoPreview');
 
 
     let fieldImage = null;
@@ -375,6 +399,7 @@
         canvas.addEventListener('wheel', handleWheel, { passive: false });
         document.addEventListener('keydown', handleKeyDown);
         resetViewBtn.addEventListener('click', resetView);
+        resetViewPreviewBtn.addEventListener('click', resetView);
     }
 
     function resizeCanvas() {
@@ -481,12 +506,13 @@
 
     // --- User Interaction Handlers ---
     function handleCanvasClick(e) {
-        if (animationFrameId || isRecording) return;
+        if (animationFrameId || isRecording || isDragging) return;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        // Account for pan and zoom transformations
+        const x = ((e.clientX - rect.left) * scaleX - panX) / zoomLevel;
+        const y = ((e.clientY - rect.top) * scaleY - panY) / zoomLevel;
 
         const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
 
@@ -648,9 +674,21 @@
 
     // --- Pan/Zoom Functions ---
     function handleMouseDown(e) {
-        if (!isPaused || !isRecording) return;
-        isDragging = true;
+        // Allow panning anytime except when clicking to add waypoints
+        if (animationFrameId) return; // Don't pan during animation
+        
+        // Check if clicking on a waypoint or empty space
         const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX - panX;
+        const y = (e.clientY - rect.top) * scaleY - panY;
+        
+        // Don't start drag if clicking near a waypoint (let waypoint selection happen)
+        const clickedWaypoint = waypoints.find(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+        if (clickedWaypoint && !isRecording) return;
+        
+        isDragging = true;
         dragStartX = e.clientX;
         dragStartY = e.clientY;
         dragStartPanX = panX;
@@ -659,24 +697,29 @@
     }
 
     function handleMouseMove(e) {
-        if (!isDragging || !isPaused) return;
+        if (!isDragging) return;
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
         panX = dragStartPanX + dx;
         panY = dragStartPanY + dy;
         updatePanZoomInfo();
-        drawWithTransform();
+        if (animationFrameId) {
+            drawWithTransform();
+        } else {
+            draw();
+        }
     }
 
     function handleMouseUp(e) {
         if (isDragging) {
             isDragging = false;
-            canvas.style.cursor = isPaused ? 'grab' : 'default';
+            canvas.style.cursor = (isPaused || !isRecording) ? 'grab' : 'default';
         }
     }
 
     function handleWheel(e) {
-        if (!isPaused || !isRecording) return;
+        // Allow zooming anytime except during animation setup
+        if (animationFrameId && !isRecording) return;
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
         const newZoom = Math.max(0.5, Math.min(3, zoomLevel * delta));
@@ -691,7 +734,11 @@
         zoomLevel = newZoom;
         
         updatePanZoomInfo();
-        drawWithTransform();
+        if (animationFrameId) {
+            drawWithTransform();
+        } else {
+            draw();
+        }
     }
 
     function handleKeyDown(e) {
@@ -717,8 +764,13 @@
     }
 
     function updatePanZoomInfo() {
-        panInfo.textContent = `${Math.round(panX)}, ${Math.round(panY)}`;
-        zoomInfo.textContent = `${Math.round(zoomLevel * 100)}%`;
+        const panText = `${Math.round(panX)}, ${Math.round(panY)}`;
+        const zoomText = `${Math.round(zoomLevel * 100)}%`;
+        
+        panInfo.textContent = panText;
+        zoomInfo.textContent = zoomText;
+        panInfoPreview.textContent = panText;
+        zoomInfoPreview.textContent = zoomText;
     }
 
     function drawWithTransform() {
@@ -735,7 +787,11 @@
 
     // --- Drawing Functions ---
     function draw() {
+        ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(panX, panY);
+        ctx.scale(zoomLevel, zoomLevel);
+        
         if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
 
         if (waypoints.length > 1) {
@@ -762,6 +818,8 @@
                  drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, 0.5);
             }
         });
+        
+        ctx.restore();
     }
 
     function drawRobot(sprite, x, y, heading, opacity = 1.0) {
@@ -1153,9 +1211,9 @@
             console.log('Upload successful, response:', data);
             
             // Build a GIF transformation URL from the uploaded video
-            // Example transformation: fps 12, width 480, loop enabled
+            // Higher quality settings: fps 30, width 800, better quality flags
             const basePublicId = data.public_id; // includes folder if any
-            const transformation = 'f_gif,fps_12,w_480,e_loop';
+            const transformation = 'f_gif,fps_30,w_800,fl_lossy.false,q_100,e_loop';
             // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
             const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
 
