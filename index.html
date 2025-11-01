@@ -776,8 +776,14 @@
     function drawWithTransform() {
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.translate(panX, panY);
-        ctx.scale(zoomLevel, zoomLevel);
+        
+        // Use stored recording pan/zoom if recording, otherwise current pan/zoom
+        const usePanX = (isRecording && window.recordingPanX !== undefined) ? window.recordingPanX : panX;
+        const usePanY = (isRecording && window.recordingPanY !== undefined) ? window.recordingPanY : panY;
+        const useZoom = (isRecording && window.recordingZoom !== undefined) ? window.recordingZoom : zoomLevel;
+        
+        ctx.translate(usePanX, usePanY);
+        ctx.scale(useZoom, useZoom);
         
         if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
@@ -881,6 +887,10 @@
         if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
         isRecording = false;
         isPaused = false;
+        // Clean up stored recording pan/zoom
+        delete window.recordingPanX;
+        delete window.recordingPanY;
+        delete window.recordingZoom;
         // Don't reset panX, panY, zoomLevel - preserve user's view
         canvas.style.cursor = 'default';
         recordBtn.textContent = 'Record';
@@ -1257,6 +1267,13 @@
         }
         if (animationFrameId) return;
         deselectWaypoint();
+        
+        // Store pan/zoom state if recording to restore later
+        if (isRecording) {
+            window.recordingPanX = panX;
+            window.recordingPanY = panY;
+            window.recordingZoom = zoomLevel;
+        }
         
         const firstWp = waypoints[0];
         const firstAction = firstWp.stopActions[0];
