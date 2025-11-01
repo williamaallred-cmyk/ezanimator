@@ -868,9 +868,7 @@
         mediaRecorder.start();
         isRecording = true;
         isPaused = false;
-        panX = 0;
-        panY = 0;
-        zoomLevel = 1;
+        // Don't reset panX, panY, zoomLevel - preserve user's view
         recordBtn.textContent = 'Stop Recording';
         recordBtn.classList.replace('bg-red-600', 'bg-green-500');
         recordBtn.classList.replace('hover:bg-red-700', 'hover:bg-green-600');
@@ -883,9 +881,7 @@
         if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
         isRecording = false;
         isPaused = false;
-        panX = 0;
-        panY = 0;
-        zoomLevel = 1;
+        // Don't reset panX, panY, zoomLevel - preserve user's view
         canvas.style.cursor = 'default';
         recordBtn.textContent = 'Record';
         recordBtn.classList.replace('bg-green-500', 'bg-red-600');
