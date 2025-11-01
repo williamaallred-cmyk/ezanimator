@@ -1207,10 +1207,10 @@
             console.log('Upload successful, response:', data);
             
             // Build a GIF transformation URL from the uploaded video
-            // Higher quality settings: fps 24, width 800, quality 100, loop enabled
+            // Higher quality settings: width 800, quality 100, loop enabled
             const basePublicId = data.public_id; // includes folder if any
-            // Use proper Cloudinary transformation syntax
-            const transformation = 'f_gif,w_800,q_100,dl_200/e_loop';
+            // Use proper Cloudinary transformation syntax - no fps/delay to preserve original timing
+            const transformation = 'f_gif,w_800,q_100/fl_lossy/e_loop';
             // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
             const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
 
