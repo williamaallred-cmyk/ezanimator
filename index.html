@@ -76,7 +76,8 @@
                 <h3 class="font-semibold text-lg mb-2 text-white">How to Use:</h3>
                 <ol class="list-decimal list-inside space-y-1.5">
                     <li>Upload a field image/PDF & initial robot sprite.</li>
-                    <li>Click on the field to add waypoints.</li>
+                    <li>Optional: Disable background to record with solid color.</li>
+                    <li>Click on the field to add waypoints (even just 1!).</li>
                     <li>Select a waypoint to edit heading and actions.</li>
                     <li>Use "Add Sprite Action" or "Duplicate" for stop-motion.</li>
                     <li>Adjust rotation for each action to rotate sprites.</li>
@@ -103,6 +104,22 @@
                 <div>
                     <label for="robotSizeSlider" class="block mb-2 font-medium">Robot Size: <span id="robotSizeValue" class="font-bold text-sky-400">50px</span></label>
                     <input id="robotSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <!-- Background Options -->
+                <div class="bg-gray-700/50 p-3 rounded-lg space-y-3">
+                    <h3 class="text-sm font-semibold text-gray-200">Background Options</h3>
+                    <div class="flex items-center space-x-2">
+                        <input id="useBackgroundCheckbox" type="checkbox" checked class="w-4 h-4 text-sky-600 bg-gray-700 border-gray-600 rounded focus:ring-sky-500">
+                        <label for="useBackgroundCheckbox" class="text-sm text-gray-300">Use field image as background</label>
+                    </div>
+                    <div id="backgroundColorOption" class="space-y-2 hidden">
+                        <label for="backgroundColorPicker" class="block text-sm text-gray-300">Background Color:</label>
+                        <div class="flex items-center space-x-2">
+                            <input id="backgroundColorPicker" type="color" value="#1f2937" class="w-12 h-8 rounded cursor-pointer bg-gray-700 border border-gray-600">
+                            <span id="backgroundColorValue" class="text-xs text-gray-400">#1f2937</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -279,6 +296,11 @@
     const resetViewPreviewBtn = document.getElementById('resetViewPreview');
     const panInfoPreview = document.getElementById('panInfoPreview');
     const zoomInfoPreview = document.getElementById('zoomInfoPreview');
+    
+    const useBackgroundCheckbox = document.getElementById('useBackgroundCheckbox');
+    const backgroundColorOption = document.getElementById('backgroundColorOption');
+    const backgroundColorPicker = document.getElementById('backgroundColorPicker');
+    const backgroundColorValue = document.getElementById('backgroundColorValue');
 
 
     let fieldImage = null;
@@ -287,6 +309,10 @@
     let selectedWaypointIndex = -1;
     let animationFrameId = null;
     let robotSize = 50; // Visual size of the robot on canvas
+    
+    // Background options
+    let useBackground = true;
+    let backgroundColor = '#1f2937';
 
     // --- Recording State ---
     let mediaRecorder;
@@ -400,6 +426,26 @@
         document.addEventListener('keydown', handleKeyDown);
         resetViewBtn.addEventListener('click', resetView);
         resetViewPreviewBtn.addEventListener('click', resetView);
+        
+        // Background options listeners
+        useBackgroundCheckbox.addEventListener('change', handleBackgroundCheckboxChange);
+        backgroundColorPicker.addEventListener('input', handleBackgroundColorChange);
+    }
+    
+    function handleBackgroundCheckboxChange() {
+        useBackground = useBackgroundCheckbox.checked;
+        if (useBackground) {
+            backgroundColorOption.classList.add('hidden');
+        } else {
+            backgroundColorOption.classList.remove('hidden');
+        }
+        draw();
+    }
+    
+    function handleBackgroundColorChange() {
+        backgroundColor = backgroundColorPicker.value;
+        backgroundColorValue.textContent = backgroundColor;
+        draw();
     }
 
     function resizeCanvas() {
@@ -795,10 +841,17 @@
     function draw() {
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw background color if not using field image
+        if (!useBackground) {
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
         ctx.translate(panX, panY);
         ctx.scale(zoomLevel, zoomLevel);
         
-        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+        if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
 
         if (waypoints.length > 1) {
             ctx.beginPath();
@@ -845,8 +898,8 @@
     }
 
     function startRecording() {
-        if (waypoints.length < 2) {
-            showInfo("Add at least two waypoints to record.");
+        if (waypoints.length < 1) {
+            showInfo("Add at least one waypoint to record.");
             return;
         }
         if (!window.MediaRecorder) {
@@ -1261,8 +1314,8 @@
 
     // --- Animation Logic ---
     function startAnimation() {
-        if (waypoints.length < 2) {
-            if (!isRecording) showInfo("Add at least two waypoints to create a path.");
+        if (waypoints.length < 1) {
+            if (!isRecording) showInfo("Add at least one waypoint to animate.");
             return;
         }
         if (animationFrameId) return;
@@ -1374,10 +1427,17 @@
         // Always render (even when paused, to show pan/zoom changes)
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw background color if not using field image
+        if (!useBackground) {
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
         ctx.translate(panX, panY);
         ctx.scale(zoomLevel, zoomLevel);
         
-        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+        if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
         
         ctx.restore();
