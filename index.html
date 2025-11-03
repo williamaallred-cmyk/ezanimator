@@ -124,6 +124,14 @@
                 </div>
             </div>
 
+            <!-- Waypoints List -->
+            <div id="waypointsList" class="space-y-4 hidden">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Waypoints</h2>
+                <div id="waypointsListContainer" class="space-y-2 max-h-64 overflow-y-auto bg-gray-700/30 p-2 rounded-lg">
+                    <!-- Waypoints will be dynamically inserted here -->
+                </div>
+            </div>
+
             <!-- Waypoint Editor -->
             <div id="waypointEditor" class="space-y-4 hidden">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Edit Waypoint <span id="waypointId" class="text-sky-400"></span></h2>
@@ -287,6 +295,9 @@
     const duplicateActionBtn = document.getElementById('duplicateActionBtn');
     const robotSizeSlider = document.getElementById('robotSizeSlider');
     const robotSizeValue = document.getElementById('robotSizeValue');
+    
+    const waypointsList = document.getElementById('waypointsList');
+    const waypointsListContainer = document.getElementById('waypointsListContainer');
     
     const panZoomControls = document.getElementById('panZoomControls');
     const resetViewBtn = document.getElementById('resetView');
@@ -606,6 +617,43 @@
         headingSlider.value = wp.heading;
         headingValue.textContent = `${wp.heading}°`;
         renderStopActions(index);
+        renderWaypointsList();
+    }
+    
+    function renderWaypointsList() {
+        if (waypoints.length === 0) {
+            waypointsList.classList.add('hidden');
+            return;
+        }
+        
+        waypointsList.classList.remove('hidden');
+        waypointsListContainer.innerHTML = '';
+        
+        waypoints.forEach((wp, index) => {
+            const wpItem = document.createElement('div');
+            wpItem.className = `flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                index === selectedWaypointIndex 
+                    ? 'bg-sky-600 text-white' 
+                    : 'bg-gray-700/50 hover:bg-gray-600/50 text-gray-200'
+            }`;
+            
+            wpItem.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <span class="font-semibold text-sm">Waypoint ${index + 1}</span>
+                </div>
+                <div class="text-xs">
+                    <span class="opacity-75">Heading:</span>
+                    <span class="font-bold ml-1">${wp.heading}°</span>
+                </div>
+            `;
+            
+            wpItem.addEventListener('click', () => {
+                selectWaypoint(index);
+                draw();
+            });
+            
+            waypointsListContainer.appendChild(wpItem);
+        });
     }
 
     function handleRobotSizeChange(e) {
@@ -699,6 +747,7 @@
     function deselectWaypoint() {
         selectedWaypointIndex = -1;
         waypointEditor.classList.add('hidden');
+        renderWaypointsList();
     }
 
     function handleHeadingChange(e) {
@@ -706,6 +755,7 @@
             const newHeading = parseInt(e.target.value);
             waypoints[selectedWaypointIndex].heading = newHeading;
             headingValue.textContent = `${newHeading}°`;
+            renderWaypointsList();
             draw();
         }
     }
@@ -715,6 +765,7 @@
             waypoints.splice(selectedWaypointIndex, 1);
             deselectWaypoint();
             if(waypoints.length > 0) selectWaypoint(waypoints.length - 1);
+            else renderWaypointsList();
             draw();
         }
     }
@@ -723,6 +774,7 @@
         if (confirm('Are you sure you want to clear all waypoints?')) {
             waypoints = [];
             deselectWaypoint();
+            renderWaypointsList();
             draw();
         }
     }
