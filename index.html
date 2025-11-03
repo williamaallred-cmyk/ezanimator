@@ -1389,8 +1389,8 @@
             // Higher quality settings: width 800, quality 100, loop enabled
             const basePublicId = data.public_id; // includes folder if any
             // Use proper Cloudinary transformation syntax to create animated GIF
-            // fl_animated ensures all frames are included, fl_lossy for compression, dl_0 for infinite loop
-            const transformation = 'f_gif,fl_animated.lossy,w_800,q_100,dl_0';
+            // fl_animated ensures all frames are included, fl_awebp.lossy for compression
+            const transformation = 'f_gif,fl_animated,fl_lossy,w_800,q_100';
             // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
             const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
 
