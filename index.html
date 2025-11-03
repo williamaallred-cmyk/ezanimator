@@ -462,7 +462,7 @@
         const containerRect = container.getBoundingClientRect();
         let newWidth = containerRect.width;
         let newHeight = containerRect.height;
-        if (fieldImage) {
+        if (fieldImage && useBackground) {
             const aspectRatio = fieldImage.width / fieldImage.height;
             if (newWidth / newHeight > aspectRatio) {
                 newWidth = newHeight * aspectRatio;
@@ -470,6 +470,7 @@
                 newHeight = newWidth / aspectRatio;
             }
         } else {
+            // Use full container size when no background or background disabled
             newWidth = Math.min(newWidth, 800);
             newHeight = Math.min(newHeight, 600);
         }
@@ -574,8 +575,13 @@
         if (clickedWaypointIndex !== -1) {
             selectWaypoint(clickedWaypointIndex);
         } else {
-            if (!fieldImage || robotSprites.length === 0) {
-                showInfo("Please upload a field image and initial robot sprite first.");
+            // Allow waypoints without background if "no background" option is selected
+            if (robotSprites.length === 0) {
+                showInfo("Please upload an initial robot sprite first.");
+                return;
+            }
+            if (useBackground && !fieldImage) {
+                showInfo("Please upload a field image or disable 'Use field image as background'.");
                 return;
             }
             const lastWaypoint = waypoints[waypoints.length - 1];
