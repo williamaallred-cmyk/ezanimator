@@ -1330,8 +1330,9 @@
             // Build a GIF transformation URL from the uploaded video
             // Higher quality settings: width 800, quality 100, loop enabled
             const basePublicId = data.public_id; // includes folder if any
-            // Use proper Cloudinary transformation syntax - no fps/delay to preserve original timing
-            const transformation = 'f_gif,w_800,q_100/fl_lossy/e_loop';
+            // Use proper Cloudinary transformation syntax to create animated GIF
+            // fl_animated ensures all frames are included, fl_awebp.lossy for compression
+            const transformation = 'f_gif,fl_animated,fl_lossy,w_800,q_100';
             // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
             const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
 
