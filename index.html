@@ -1040,7 +1040,7 @@
             // Open modal to choose filename and then trigger download
             openRenameModal();
         };
-        mediaRecorder.start();
+        mediaRecorder.start(100); // Request data every 100ms
         isRecording = true;
         isPaused = false;
         // Don't reset panX, panY, zoomLevel - preserve user's view
