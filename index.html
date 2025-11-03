@@ -79,9 +79,11 @@
                     <li>Optional: Disable background to record with solid color.</li>
                     <li>Click on the field to add waypoints (even just 1!).</li>
                     <li>Drag waypoints to reposition them.</li>
+                    <li>Hold SHIFT while dragging for straight lines!</li>
                     <li>Select a waypoint to edit heading and actions.</li>
                     <li>Use "Add Sprite Action" or "Duplicate" for stop-motion.</li>
                     <li>Adjust rotation for each action to rotate sprites.</li>
+                    <li>Adjust playback speed for faster/slower animations.</li>
                     <li>Press 'Animate' to preview or 'Record' to save.</li>
                     <li>While recording: Press SPACE to pause, then drag to pan or scroll to zoom!</li>
                 </ol>
@@ -183,6 +185,14 @@
             <!-- Animation Controls -->
             <div class="space-y-4">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Animation</h2>
+                <div>
+                    <label for="speedSlider" class="block mb-2 font-medium">Playback Speed: <span id="speedValue" class="font-bold text-sky-400">1x</span></label>
+                    <input id="speedSlider" type="range" min="0.25" max="3" step="0.25" value="1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>0.25x</span>
+                        <span>3x</span>
+                    </div>
+                </div>
                 <div class="flex space-x-2">
                     <button id="record" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Record</button>
                     <button id="animate" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Animate</button>
@@ -295,6 +305,8 @@
     const duplicateActionBtn = document.getElementById('duplicateActionBtn');
     const robotSizeSlider = document.getElementById('robotSizeSlider');
     const robotSizeValue = document.getElementById('robotSizeValue');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
     
     const waypointsList = document.getElementById('waypointsList');
     const waypointsListContainer = document.getElementById('waypointsListContainer');
@@ -321,6 +333,7 @@
     let selectedWaypointIndex = -1;
     let animationFrameId = null;
     let robotSize = 50; // Visual size of the robot on canvas
+    let playbackSpeed = 1; // Animation playback speed multiplier
     
     // Background options
     let useBackground = true;
@@ -352,6 +365,7 @@
     let isDraggingWaypoint = false;
     let draggedWaypointIndex = -1;
     let hoveredWaypointIndex = -1;
+    let isShiftPressed = false;
 
     // --- State Management ---
     let robotState = {
@@ -361,8 +375,8 @@
         spriteIndex: 0,
         segmentIndex: 0, // The waypoint we are currently at, or have just left
         progress: 0, // Progress along the current segment
-        speed: 2, // pixels per frame
-        rotationSpeed: 3, // degrees per frame
+        baseSpeed: 2, // base pixels per frame
+        baseRotationSpeed: 3, // base degrees per frame
         phase: 'idle', // idle, rotating, dwelling, moving
         actionIndex: 0, // which stopAction we are on
         dwellCounter: 0, // frames spent on the current action
@@ -415,6 +429,7 @@
         addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
         duplicateActionBtn.addEventListener('click', handleDuplicateAction);
         robotSizeSlider.addEventListener('input', handleRobotSizeChange);
+        speedSlider.addEventListener('input', handleSpeedChange);
         animateBtn.addEventListener('click', startAnimation);
         stopBtn.addEventListener('click', stopAnimation);
         clearBtn.addEventListener('click', clearWaypoints);
@@ -661,6 +676,11 @@
         robotSizeValue.textContent = `${robotSize}px`;
         draw(); // Redraw the canvas to show the new preview size
     }
+    
+    function handleSpeedChange(e) {
+        playbackSpeed = parseFloat(e.target.value);
+        speedValue.textContent = `${playbackSpeed}x`;
+    }
 
     function handleDuplicateAction() {
         if (selectedWaypointIndex !== -1) {
@@ -822,11 +842,25 @@
         const scaleY = canvas.height / rect.height;
         const canvasX = (e.clientX - rect.left) * scaleX;
         const canvasY = (e.clientY - rect.top) * scaleY;
-        const x = (canvasX - panX) / zoomLevel;
-        const y = (canvasY - panY) / zoomLevel;
+        let x = (canvasX - panX) / zoomLevel;
+        let y = (canvasY - panY) / zoomLevel;
         
         // Handle waypoint dragging
         if (isDraggingWaypoint && draggedWaypointIndex !== -1) {
+            // Shift key: constrain to straight lines from previous waypoint
+            if (isShiftPressed && draggedWaypointIndex > 0) {
+                const prevWp = waypoints[draggedWaypointIndex - 1];
+                const dx = Math.abs(x - prevWp.x);
+                const dy = Math.abs(y - prevWp.y);
+                
+                // Lock to whichever axis has more movement
+                if (dx > dy) {
+                    y = prevWp.y; // Horizontal line
+                } else {
+                    x = prevWp.x; // Vertical line
+                }
+            }
+            
             waypoints[draggedWaypointIndex].x = x;
             waypoints[draggedWaypointIndex].y = y;
             draw();
@@ -906,7 +940,16 @@
             e.preventDefault();
             togglePause();
         }
+        if (e.key === 'Shift') {
+            isShiftPressed = true;
+        }
     }
+    
+    document.addEventListener('keyup', (e) => {
+        if (e.key === 'Shift') {
+            isShiftPressed = false;
+        }
+    });
 
     function togglePause() {
         isPaused = !isPaused;
@@ -1481,14 +1524,15 @@
             const currentWp = waypoints[robotState.segmentIndex];
 
             if (robotState.phase === 'rotating') {
+                const rotationSpeed = robotState.baseRotationSpeed * playbackSpeed;
                 const angleDiff = ((((currentWp.heading - robotState.heading) % 360) + 540) % 360) - 180;
-                if (Math.abs(angleDiff) < robotState.rotationSpeed) {
+                if (Math.abs(angleDiff) < rotationSpeed) {
                     robotState.heading = currentWp.heading;
                     robotState.phase = 'dwelling';
                     robotState.actionIndex = 0;
                     robotState.dwellCounter = 0;
                 } else {
-                    robotState.heading += Math.sign(angleDiff) * robotState.rotationSpeed;
+                    robotState.heading += Math.sign(angleDiff) * rotationSpeed;
                 }
             } 
             else if (robotState.phase === 'dwelling') {
@@ -1502,7 +1546,7 @@
                 } else {
                     robotState.spriteIndex = currentAction.spriteIndex;
                     robotState.heading = currentWp.heading + (currentAction.rotation || 0);
-                    robotState.dwellCounter++;
+                    robotState.dwellCounter += playbackSpeed;
                     if (robotState.dwellCounter >= currentAction.duration) {
                         robotState.actionIndex++;
                         robotState.dwellCounter = 0;
@@ -1522,7 +1566,8 @@
                 robotState.spriteIndex = lastAction.spriteIndex;
 
                 if (distance > 0) {
-                    robotState.progress += robotState.speed;
+                    const speed = robotState.baseSpeed * playbackSpeed;
+                    robotState.progress += speed;
                     if (robotState.progress >= distance) {
                         robotState.segmentIndex++;
                         robotState.progress = 0;
