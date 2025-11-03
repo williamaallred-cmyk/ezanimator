@@ -195,10 +195,6 @@
                         <button id="downloadWebm" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">Download WebM</button>
                         <button id="convertGif" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">Convert to GIF</button>
                     </div>
-                    <div class="flex items-center space-x-2 px-2">
-                        <input id="gifLoopCheckbox" type="checkbox" checked class="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500">
-                        <label for="gifLoopCheckbox" class="text-xs text-gray-300">Loop GIF infinitely</label>
-                    </div>
                 </div>
                 
                 <p id="gifStatus" class="text-xs text-gray-400 mt-1 hidden"></p>
@@ -317,7 +313,6 @@
     const backgroundColorOption = document.getElementById('backgroundColorOption');
     const backgroundColorPicker = document.getElementById('backgroundColorPicker');
     const backgroundColorValue = document.getElementById('backgroundColorValue');
-    const gifLoopCheckbox = document.getElementById('gifLoopCheckbox');
 
 
     let fieldImage = null;
@@ -1038,7 +1033,6 @@
         mediaRecorder.onstop = () => {
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
             lastRecordingBlob = blob;
-            console.log('Recording stopped. Blob size:', blob.size, 'bytes. Chunks:', recordedChunks.length);
             // Enable export buttons now that we have a recording (if present)
             if (convertGifBtn) convertGifBtn.disabled = false;
             if (downloadWebmBtn) downloadWebmBtn.disabled = false;
@@ -1046,8 +1040,7 @@
             // Open modal to choose filename and then trigger download
             openRenameModal();
         };
-        // Request data every 100ms to ensure we capture frames
-        mediaRecorder.start(100);
+        mediaRecorder.start();
         isRecording = true;
         isPaused = false;
         // Don't reset panX, panY, zoomLevel - preserve user's view
@@ -1321,7 +1314,7 @@
             ffmpegInstance.FS('writeFile', inputName, new Uint8Array(data));
 
             // Recommended two-pass palette method for better colors/size
-            const fps = 30; // Higher FPS for smoother animation (matches recording FPS)
+            const fps = 12; // adjust for size/quality
             const width = 480; // scale width, keep aspect
 
             setGifStatus('Generating palette...');
@@ -1393,19 +1386,11 @@
             console.log('Upload successful, response:', data);
             
             // Build a GIF transformation URL from the uploaded video
+            // Higher quality settings: width 800, quality 100, loop enabled
             const basePublicId = data.public_id; // includes folder if any
-            
-            // Check if user wants the GIF to loop
-            const shouldLoop = gifLoopCheckbox ? gifLoopCheckbox.checked : true;
-            const loopParam = shouldLoop ? 'dl_0' : ''; // dl_0 = infinite loop, empty = play once
-            
             // Use proper Cloudinary transformation syntax to create animated GIF
-            // fl_animated ensures all frames are included, fl_lossy for compression
-            // w_800 for width, q_100 for quality (adjust if needed for file size)
-            const transformParts = ['f_gif', 'fl_animated.lossy', 'w_800', 'q_100'];
-            if (loopParam) transformParts.push(loopParam);
-            const transformation = transformParts.join(',');
-            
+            // fl_animated ensures all frames are included, fl_lossy for compression, dl_0 for infinite loop
+            const transformation = 'f_gif,fl_animated.lossy,w_800,q_100,dl_0';
             // Cloudinary delivery URL pattern: /video/upload/<transforms>/<public_id>.gif
             const gifUrl = `https://res.cloudinary.com/${cloudinaryConfig.cloudName}/video/upload/${transformation}/${basePublicId}.gif`;
 
@@ -1518,10 +1503,6 @@
                     robotState.spriteIndex = currentAction.spriteIndex;
                     robotState.heading = currentWp.heading + (currentAction.rotation || 0);
                     robotState.dwellCounter++;
-                    // Debug logging (only log occasionally to avoid spam)
-                    if (isRecording && robotState.dwellCounter % 30 === 0) {
-                        console.log(`Waypoint ${robotState.segmentIndex + 1}, Action ${robotState.actionIndex + 1}: ${robotState.dwellCounter}/${currentAction.duration} frames`);
-                    }
                     if (robotState.dwellCounter >= currentAction.duration) {
                         robotState.actionIndex++;
                         robotState.dwellCounter = 0;
