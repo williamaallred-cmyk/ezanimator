@@ -390,6 +390,7 @@
         return {
             name: name,
             waypoints: [],
+            defaultSpriteIndex: 0, // Default sprite image to use for new waypoints
             state: {
                 x: 0,
                 y: 0,
@@ -420,12 +421,15 @@
         spriteList.innerHTML = '';
         spriteInstances.forEach((sprite, index) => {
             const spriteItem = document.createElement('div');
-            spriteItem.className = `flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+            spriteItem.className = `flex flex-col space-y-2 p-2 rounded transition-colors ${
                 index === activeSpriteIndex ? 'bg-sky-600' : 'bg-gray-600 hover:bg-gray-500'
             }`;
             
+            const topRow = document.createElement('div');
+            topRow.className = 'flex items-center justify-between';
+            
             const leftSide = document.createElement('div');
-            leftSide.className = 'flex items-center space-x-2 flex-1';
+            leftSide.className = 'flex items-center space-x-2 flex-1 cursor-pointer';
             leftSide.onclick = () => selectSprite(index);
             
             const spriteName = document.createElement('span');
@@ -441,12 +445,63 @@
             };
             
             leftSide.appendChild(spriteName);
-            spriteItem.appendChild(leftSide);
+            topRow.appendChild(leftSide);
             if (spriteInstances.length > 1) {
-                spriteItem.appendChild(deleteBtn);
+                topRow.appendChild(deleteBtn);
             }
+            
+            // Add upload sprite button
+            const uploadBtn = document.createElement('button');
+            uploadBtn.innerHTML = '📁 Upload Sprite Image';
+            uploadBtn.className = 'w-full bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-2 rounded transition-colors';
+            uploadBtn.onclick = (e) => {
+                e.stopPropagation();
+                uploadSpriteForInstance(index);
+            };
+            
+            spriteItem.appendChild(topRow);
+            spriteItem.appendChild(uploadBtn);
             spriteList.appendChild(spriteItem);
         });
+    }
+    
+    function uploadSpriteForInstance(spriteIndex) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file || !file.type.startsWith('image/')) {
+                showInfo('Please upload a valid image file.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Add to global sprite images array
+                    robotSprites.push(img);
+                    const newSpriteIndex = robotSprites.length - 1;
+                    
+                    // Update this sprite instance to use the new sprite
+                    const sprite = spriteInstances[spriteIndex];
+                    sprite.defaultSpriteIndex = newSpriteIndex;
+                    
+                    // Update all waypoints for this sprite to use the new sprite
+                    sprite.waypoints.forEach(wp => {
+                        wp.stopActions.forEach(action => {
+                            action.spriteIndex = newSpriteIndex;
+                        });
+                    });
+                    
+                    showInfo(`Sprite image uploaded for ${sprite.name}`);
+                    draw();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+        input.click();
     }
     
     function selectSprite(index) {
@@ -716,7 +771,10 @@
                 return;
             }
             const lastWaypoint = sprite.waypoints[sprite.waypoints.length - 1];
-            const lastSpriteIndex = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].spriteIndex : 0;
+            // Use sprite's default sprite index, or fallback to last waypoint's sprite, or 0
+            const lastSpriteIndex = lastWaypoint ? 
+                lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].spriteIndex : 
+                (sprite.defaultSpriteIndex !== undefined ? sprite.defaultSpriteIndex : 0);
             const lastRotation = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].rotation : 0;
             
             sprite.waypoints.push({
