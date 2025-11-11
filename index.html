@@ -126,6 +126,17 @@
                 </div>
             </div>
 
+            <!-- Sprite Manager -->
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Sprites</h2>
+                <div id="spriteList" class="space-y-2 bg-gray-700/50 p-3 rounded-lg max-h-60 overflow-y-auto">
+                    <!-- Sprite instances will be listed here -->
+                </div>
+                <button id="addSpriteBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    + Add Sprite
+                </button>
+            </div>
+
             <!-- Waypoints List -->
             <div id="waypointsList" class="space-y-4 hidden">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Waypoints</h2>
@@ -325,11 +336,18 @@
     const backgroundColorOption = document.getElementById('backgroundColorOption');
     const backgroundColorPicker = document.getElementById('backgroundColorPicker');
     const backgroundColorValue = document.getElementById('backgroundColorValue');
+    
+    const spriteList = document.getElementById('spriteList');
+    const addSpriteBtn = document.getElementById('addSpriteBtn');
 
 
     let fieldImage = null;
     let robotSprites = []; // Global store for all unique sprite images
-    let waypoints = [];
+    
+    // Multi-sprite system
+    let spriteInstances = []; // Array of sprite objects, each with waypoints and state
+    let activeSpriteIndex = 0; // Which sprite is currently selected for editing
+    
     let selectedWaypointIndex = -1;
     let animationFrameId = null;
     let robotSize = 50; // Visual size of the robot on canvas
@@ -367,22 +385,102 @@
     let hoveredWaypointIndex = -1;
     let isShiftPressed = false;
 
-    // --- State Management ---
-    let robotState = {
-        x: 0,
-        y: 0,
-        heading: 0,
-        spriteIndex: 0,
-        segmentIndex: 0, // The waypoint we are currently at, or have just left
-        progress: 0, // Progress along the current segment
-        baseSpeed: 2, // base pixels per frame
-        baseRotationSpeed: 3, // base degrees per frame
-        phase: 'idle', // idle, rotating, dwelling, moving
-        actionIndex: 0, // which stopAction we are on
-        dwellCounter: 0, // frames spent on the current action
-    };
+    // --- Sprite Instance Helpers ---
+    function createSpriteInstance(name) {
+        return {
+            name: name,
+            waypoints: [],
+            state: {
+                x: 0,
+                y: 0,
+                heading: 0,
+                spriteIndex: 0,
+                segmentIndex: 0,
+                progress: 0,
+                baseSpeed: 2,
+                baseRotationSpeed: 3,
+                phase: 'idle',
+                actionIndex: 0,
+                dwellCounter: 0,
+            }
+        };
+    }
+    
+    function getActiveSprite() {
+        if (spriteInstances.length === 0) {
+            spriteInstances.push(createSpriteInstance('Sprite 1'));
+            activeSpriteIndex = 0;
+            renderSpriteList();
+        }
+        return spriteInstances[activeSpriteIndex];
+    }
+    
+    // Sprite list management
+    function renderSpriteList() {
+        spriteList.innerHTML = '';
+        spriteInstances.forEach((sprite, index) => {
+            const spriteItem = document.createElement('div');
+            spriteItem.className = `flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                index === activeSpriteIndex ? 'bg-sky-600' : 'bg-gray-600 hover:bg-gray-500'
+            }`;
+            
+            const leftSide = document.createElement('div');
+            leftSide.className = 'flex items-center space-x-2 flex-1';
+            leftSide.onclick = () => selectSprite(index);
+            
+            const spriteName = document.createElement('span');
+            spriteName.textContent = `${sprite.name} (${sprite.waypoints.length} waypoints)`;
+            spriteName.className = 'text-sm';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerHTML = '×';
+            deleteBtn.className = 'text-red-400 hover:text-red-300 font-bold text-xl px-2';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteSprite(index);
+            };
+            
+            leftSide.appendChild(spriteName);
+            spriteItem.appendChild(leftSide);
+            if (spriteInstances.length > 1) {
+                spriteItem.appendChild(deleteBtn);
+            }
+            spriteList.appendChild(spriteItem);
+        });
+    }
+    
+    function selectSprite(index) {
+        activeSpriteIndex = index;
+        selectedWaypointIndex = -1;
+        waypointEditor.classList.add('hidden');
+        renderSpriteList();
+        renderWaypointsList();
+        draw();
+    }
+    
+    function addSprite() {
+        const newIndex = spriteInstances.length + 1;
+        spriteInstances.push(createSpriteInstance(`Sprite ${newIndex}`));
+        selectSprite(spriteInstances.length - 1);
+    }
+    
+    function deleteSprite(index) {
+        if (spriteInstances.length === 1) {
+            showInfo("Cannot delete the last sprite");
+            return;
+        }
+        spriteInstances.splice(index, 1);
+        if (activeSpriteIndex >= spriteInstances.length) {
+            activeSpriteIndex = spriteInstances.length - 1;
+        }
+        selectedWaypointIndex = -1;
+        waypointEditor.classList.add('hidden');
+        renderSpriteList();
+        renderWaypointsList();
+        draw();
+    }
 
-    // --- Initialization and Event Listeners ---
+    // --- State Management ---
     function init() {
         // Initialize PDF.js worker
         if (typeof pdfjsLib !== 'undefined') {
@@ -414,7 +512,8 @@
              if (selectedWaypointIndex !== -1) {
                 robotSprites.push(img);
                 const newSpriteIndex = robotSprites.length - 1;
-                waypoints[selectedWaypointIndex].stopActions.push({
+                const sprite = getActiveSprite();
+                sprite.waypoints[selectedWaypointIndex].stopActions.push({
                     spriteIndex: newSpriteIndex,
                     duration: 30,
                     rotation: 0 // Default rotation
@@ -451,6 +550,11 @@
             if (e.key === 'Enter') { e.preventDefault(); onRenameSaveWebM(); }
             if (e.key === 'Escape') { e.preventDefault(); onRenameCancel(); }
         });
+        
+        // Sprite management
+        addSpriteBtn.addEventListener('click', addSprite);
+        getActiveSprite(); // Initialize first sprite
+        renderSpriteList();
         
         // Pan/Zoom event listeners
         canvas.addEventListener('mousedown', handleMouseDown);
@@ -596,7 +700,8 @@
         const x = ((e.clientX - rect.left) * scaleX - panX) / zoomLevel;
         const y = ((e.clientY - rect.top) * scaleY - panY) / zoomLevel;
 
-        const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+        const sprite = getActiveSprite();
+        const clickedWaypointIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
 
         if (clickedWaypointIndex !== -1) {
             selectWaypoint(clickedWaypointIndex);
@@ -610,23 +715,25 @@
                 showInfo("Please upload a field image or disable 'Use field image as background'.");
                 return;
             }
-            const lastWaypoint = waypoints[waypoints.length - 1];
+            const lastWaypoint = sprite.waypoints[sprite.waypoints.length - 1];
             const lastSpriteIndex = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].spriteIndex : 0;
             const lastRotation = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].rotation : 0;
             
-            waypoints.push({
+            sprite.waypoints.push({
                 x, y,
                 heading: lastWaypoint ? lastWaypoint.heading : 0,
                 stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation }],
             });
-            selectWaypoint(waypoints.length - 1);
+            selectWaypoint(sprite.waypoints.length - 1);
+            renderSpriteList();
         }
         draw();
     }
     
     function selectWaypoint(index) {
         selectedWaypointIndex = index;
-        const wp = waypoints[index];
+        const sprite = getActiveSprite();
+        const wp = sprite.waypoints[index];
         waypointEditor.classList.remove('hidden');
         waypointId.textContent = `#${index + 1}`;
         headingSlider.value = wp.heading;
@@ -636,7 +743,8 @@
     }
     
     function renderWaypointsList() {
-        if (waypoints.length === 0) {
+        const sprite = getActiveSprite();
+        if (sprite.waypoints.length === 0) {
             waypointsList.classList.add('hidden');
             return;
         }
@@ -644,7 +752,7 @@
         waypointsList.classList.remove('hidden');
         waypointsListContainer.innerHTML = '';
         
-        waypoints.forEach((wp, index) => {
+        sprite.waypoints.forEach((wp, index) => {
             const wpItem = document.createElement('div');
             wpItem.className = `flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
                 index === selectedWaypointIndex 
@@ -684,7 +792,8 @@
 
     function handleDuplicateAction() {
         if (selectedWaypointIndex !== -1) {
-            const wp = waypoints[selectedWaypointIndex];
+            const sprite = getActiveSprite();
+            const wp = sprite.waypoints[selectedWaypointIndex];
             if (wp.stopActions.length > 0) {
                 const lastAction = wp.stopActions[wp.stopActions.length - 1];
                 wp.stopActions.push({
@@ -700,7 +809,8 @@
 
     function renderStopActions(waypointIndex) {
         stopActionsList.innerHTML = '';
-        const wp = waypoints[waypointIndex];
+        const sprite = getActiveSprite();
+        const wp = sprite.waypoints[waypointIndex];
         if (!wp.stopActions || wp.stopActions.length === 0) {
             stopActionsList.innerHTML = `<p class="text-xs text-gray-400">No actions defined. Add one!</p>`;
             return;
@@ -772,8 +882,9 @@
 
     function handleHeadingChange(e) {
         if (selectedWaypointIndex !== -1) {
+            const sprite = getActiveSprite();
             const newHeading = parseInt(e.target.value);
-            waypoints[selectedWaypointIndex].heading = newHeading;
+            sprite.waypoints[selectedWaypointIndex].heading = newHeading;
             headingValue.textContent = `${newHeading}°`;
             renderWaypointsList();
             draw();
@@ -782,18 +893,22 @@
     
     function deleteSelectedWaypoint() {
         if (selectedWaypointIndex !== -1) {
-            waypoints.splice(selectedWaypointIndex, 1);
+            const sprite = getActiveSprite();
+            sprite.waypoints.splice(selectedWaypointIndex, 1);
             deselectWaypoint();
-            if(waypoints.length > 0) selectWaypoint(waypoints.length - 1);
+            if(sprite.waypoints.length > 0) selectWaypoint(sprite.waypoints.length - 1);
             else renderWaypointsList();
+            renderSpriteList();
             draw();
         }
     }
 
     function clearWaypoints() {
-        if (confirm('Are you sure you want to clear all waypoints?')) {
-            waypoints = [];
+        if (confirm('Are you sure you want to clear all waypoints for this sprite?')) {
+            const sprite = getActiveSprite();
+            sprite.waypoints = [];
             deselectWaypoint();
+            renderSpriteList();
             renderWaypointsList();
             draw();
         }
@@ -820,7 +935,8 @@
         const y = (canvasY - panY) / zoomLevel;
         
         // Check if clicking on a waypoint to drag it
-        const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+        const sprite = getActiveSprite();
+        const clickedWaypointIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
         if (clickedWaypointIndex !== -1 && !isRecording) {
             isDraggingWaypoint = true;
             draggedWaypointIndex = clickedWaypointIndex;
@@ -847,9 +963,10 @@
         
         // Handle waypoint dragging
         if (isDraggingWaypoint && draggedWaypointIndex !== -1) {
+            const sprite = getActiveSprite();
             // Shift key: constrain to straight lines from previous waypoint
             if (isShiftPressed && draggedWaypointIndex > 0) {
-                const prevWp = waypoints[draggedWaypointIndex - 1];
+                const prevWp = sprite.waypoints[draggedWaypointIndex - 1];
                 const dx = Math.abs(x - prevWp.x);
                 const dy = Math.abs(y - prevWp.y);
                 
@@ -861,8 +978,8 @@
                 }
             }
             
-            waypoints[draggedWaypointIndex].x = x;
-            waypoints[draggedWaypointIndex].y = y;
+            sprite.waypoints[draggedWaypointIndex].x = x;
+            sprite.waypoints[draggedWaypointIndex].y = y;
             draw();
             return;
         }
@@ -884,7 +1001,8 @@
         
         // Update hover state for cursor feedback
         if (!animationFrameId && !isRecording) {
-            const hoveredIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+            const sprite = getActiveSprite();
+            const hoveredIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
             if (hoveredIndex !== -1) {
                 hoveredWaypointIndex = hoveredIndex;
                 canvas.style.cursor = 'move';
@@ -1010,31 +1128,41 @@
         
         if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
 
-        if (waypoints.length > 1) {
-            ctx.beginPath();
-            ctx.moveTo(waypoints[0].x, waypoints[0].y);
-            for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
-            ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-        }
-
-        waypoints.forEach((wp, i) => {
-            // Draw larger circle if hovered
-            const radius = i === hoveredWaypointIndex ? 10 : 8;
-            ctx.beginPath();
-            ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
-            ctx.fillStyle = i === selectedWaypointIndex ? '#38bdf8' : 'rgba(255, 255, 0, 0.8)';
-            ctx.fill();
-            ctx.strokeStyle = i === selectedWaypointIndex ? '#fff' : (i === hoveredWaypointIndex ? '#fff' : '#000');
-            ctx.lineWidth = i === hoveredWaypointIndex ? 3 : 2;
-            ctx.stroke();
-
-            const lastAction = wp.stopActions[wp.stopActions.length - 1];
-            if (lastAction && robotSprites[lastAction.spriteIndex]) {
-                 const rotation = wp.heading + (lastAction.rotation || 0);
-                 drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, 0.5);
+        // Draw all sprites (inactive ones with lower opacity)
+        spriteInstances.forEach((sprite, spriteIdx) => {
+            const isActive = spriteIdx === activeSpriteIndex;
+            
+            // Draw waypoint path
+            if (sprite.waypoints.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(sprite.waypoints[0].x, sprite.waypoints[0].y);
+                for (let i = 1; i < sprite.waypoints.length; i++) {
+                    ctx.lineTo(sprite.waypoints[i].x, sprite.waypoints[i].y);
+                }
+                ctx.strokeStyle = isActive ? 'rgba(255, 255, 0, 0.7)' : 'rgba(255, 255, 0, 0.2)';
+                ctx.lineWidth = isActive ? 3 : 2;
+                ctx.stroke();
             }
+
+            // Draw waypoints
+            sprite.waypoints.forEach((wp, i) => {
+                const isHovered = isActive && i === hoveredWaypointIndex;
+                const radius = isHovered ? 10 : (isActive ? 8 : 5);
+                ctx.beginPath();
+                ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
+                const isSelected = isActive && i === selectedWaypointIndex;
+                ctx.fillStyle = isSelected ? '#38bdf8' : (isActive ? 'rgba(255, 255, 0, 0.8)' : 'rgba(255, 255, 0, 0.3)');
+                ctx.fill();
+                ctx.strokeStyle = isSelected ? '#fff' : (isHovered ? '#fff' : (isActive ? '#000' : 'rgba(0,0,0,0.5)'));
+                ctx.lineWidth = isHovered ? 3 : 2;
+                ctx.stroke();
+
+                const lastAction = wp.stopActions[wp.stopActions.length - 1];
+                if (lastAction && robotSprites[lastAction.spriteIndex]) {
+                    const rotation = wp.heading + (lastAction.rotation || 0);
+                    drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, isActive ? 0.5 : 0.2);
+                }
+            });
         });
         
         ctx.restore();
@@ -1057,8 +1185,10 @@
     }
 
     function startRecording() {
-        if (waypoints.length < 1) {
-            showInfo("Add at least one waypoint to record.");
+        // Check if at least one sprite has waypoints
+        const hasWaypoints = spriteInstances.some(s => s.waypoints.length >= 1);
+        if (!hasWaypoints) {
+            showInfo("Add at least one waypoint to at least one sprite.");
             return;
         }
         if (!window.MediaRecorder) {
@@ -1474,8 +1604,10 @@
 
     // --- Animation Logic ---
     function startAnimation() {
-        if (waypoints.length < 1) {
-            if (!isRecording) showInfo("Add at least one waypoint to animate.");
+        // Check if at least one sprite has waypoints
+        const hasWaypoints = spriteInstances.some(s => s.waypoints.length >= 1);
+        if (!hasWaypoints) {
+            if (!isRecording) showInfo("Add at least one waypoint to at least one sprite.");
             return;
         }
         if (animationFrameId) return;
@@ -1488,17 +1620,24 @@
             window.recordingZoom = zoomLevel;
         }
         
-        const firstWp = waypoints[0];
-        const firstAction = firstWp.stopActions[0];
-        robotState.segmentIndex = 0;
-        robotState.progress = 0;
-        robotState.x = firstWp.x;
-        robotState.y = firstWp.y;
-        robotState.heading = firstWp.heading;
-        robotState.spriteIndex = firstAction ? firstAction.spriteIndex : 0;
-        robotState.phase = 'rotating';
-        robotState.actionIndex = 0;
-        robotState.dwellCounter = 0;
+        // Initialize all sprites with waypoints
+        spriteInstances.forEach(sprite => {
+            if (sprite.waypoints.length >= 1) {
+                const firstWp = sprite.waypoints[0];
+                const firstAction = firstWp.stopActions[0];
+                sprite.state.segmentIndex = 0;
+                sprite.state.progress = 0;
+                sprite.state.x = firstWp.x;
+                sprite.state.y = firstWp.y;
+                sprite.state.heading = firstWp.heading;
+                sprite.state.spriteIndex = firstAction ? firstAction.spriteIndex : 0;
+                sprite.state.phase = sprite.waypoints.length > 1 ? 'rotating' : 'dwelling';
+                sprite.state.actionIndex = 0;
+                sprite.state.dwellCounter = 0;
+            } else {
+                sprite.state.phase = 'idle';
+            }
+        });
 
         animationLoop();
     }
@@ -1513,77 +1652,83 @@
     }
 
     function animationLoop() {
-        if (robotState.phase === 'idle') {
+        // Check if all sprites are idle
+        const allIdle = spriteInstances.every(s => s.state.phase === 'idle');
+        if (allIdle) {
             stopAnimation();
             if (!isRecording) showInfo("Animation finished!");
             return;
         }
         
-        // Only update robot state if not paused
+        // Only update sprite states if not paused
         if (!isPaused) {
-            const currentWp = waypoints[robotState.segmentIndex];
+            spriteInstances.forEach(sprite => {
+                if (sprite.state.phase === 'idle' || sprite.waypoints.length < 1) return;
+                
+                const currentWp = sprite.waypoints[sprite.state.segmentIndex];
 
-            if (robotState.phase === 'rotating') {
-                const rotationSpeed = robotState.baseRotationSpeed * playbackSpeed;
-                const angleDiff = ((((currentWp.heading - robotState.heading) % 360) + 540) % 360) - 180;
-                if (Math.abs(angleDiff) < rotationSpeed) {
-                    robotState.heading = currentWp.heading;
-                    robotState.phase = 'dwelling';
-                    robotState.actionIndex = 0;
-                    robotState.dwellCounter = 0;
-                } else {
-                    robotState.heading += Math.sign(angleDiff) * rotationSpeed;
-                }
-            } 
-            else if (robotState.phase === 'dwelling') {
-                const currentAction = currentWp.stopActions[robotState.actionIndex];
-                if (!currentAction) {
-                    if (robotState.segmentIndex >= waypoints.length - 1) {
-                        robotState.phase = 'idle';
+                if (sprite.state.phase === 'rotating') {
+                    const rotationSpeed = sprite.state.baseRotationSpeed * playbackSpeed;
+                    const angleDiff = ((((currentWp.heading - sprite.state.heading) % 360) + 540) % 360) - 180;
+                    if (Math.abs(angleDiff) < rotationSpeed) {
+                        sprite.state.heading = currentWp.heading;
+                        sprite.state.phase = 'dwelling';
+                        sprite.state.actionIndex = 0;
+                        sprite.state.dwellCounter = 0;
                     } else {
-                        robotState.phase = 'moving';
+                        sprite.state.heading += Math.sign(angleDiff) * rotationSpeed;
                     }
-                } else {
-                    robotState.spriteIndex = currentAction.spriteIndex;
-                    robotState.heading = currentWp.heading + (currentAction.rotation || 0);
-                    robotState.dwellCounter += playbackSpeed;
-                    if (robotState.dwellCounter >= currentAction.duration) {
-                        robotState.actionIndex++;
-                        robotState.dwellCounter = 0;
-                    }
-                }
-            }
-            else if (robotState.phase === 'moving') {
-                const startWp = currentWp;
-                const endWp = waypoints[robotState.segmentIndex + 1];
-                const dx = endWp.x - startWp.x;
-                const dy = endWp.y - startWp.y;
-                const distance = Math.sqrt(dx*dx + dy*dy);
-
-                // Set heading and sprite based on the waypoint we just left
-                const lastAction = startWp.stopActions[startWp.stopActions.length - 1];
-                robotState.heading = startWp.heading + (lastAction.rotation || 0);
-                robotState.spriteIndex = lastAction.spriteIndex;
-
-                if (distance > 0) {
-                    const speed = robotState.baseSpeed * playbackSpeed;
-                    robotState.progress += speed;
-                    if (robotState.progress >= distance) {
-                        robotState.segmentIndex++;
-                        robotState.progress = 0;
-                        robotState.x = endWp.x;
-                        robotState.y = endWp.y;
-                        robotState.phase = 'rotating';
+                } 
+                else if (sprite.state.phase === 'dwelling') {
+                    const currentAction = currentWp.stopActions[sprite.state.actionIndex];
+                    if (!currentAction) {
+                        if (sprite.state.segmentIndex >= sprite.waypoints.length - 1) {
+                            sprite.state.phase = 'idle';
+                        } else {
+                            sprite.state.phase = 'moving';
+                        }
                     } else {
-                        const progressRatio = robotState.progress / distance;
-                        robotState.x = startWp.x + dx * progressRatio;
-                        robotState.y = startWp.y + dy * progressRatio;
+                        sprite.state.spriteIndex = currentAction.spriteIndex;
+                        sprite.state.heading = currentWp.heading + (currentAction.rotation || 0);
+                        sprite.state.dwellCounter += playbackSpeed;
+                        if (sprite.state.dwellCounter >= currentAction.duration) {
+                            sprite.state.actionIndex++;
+                            sprite.state.dwellCounter = 0;
+                        }
                     }
-                } else { // Waypoints are on top of each other
-                    robotState.segmentIndex++;
-                    robotState.phase = 'rotating';
                 }
-            }
+                else if (sprite.state.phase === 'moving') {
+                    const startWp = currentWp;
+                    const endWp = sprite.waypoints[sprite.state.segmentIndex + 1];
+                    const dx = endWp.x - startWp.x;
+                    const dy = endWp.y - startWp.y;
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+
+                    // Set heading and sprite based on the waypoint we just left
+                    const lastAction = startWp.stopActions[startWp.stopActions.length - 1];
+                    sprite.state.heading = startWp.heading + (lastAction.rotation || 0);
+                    sprite.state.spriteIndex = lastAction.spriteIndex;
+
+                    if (distance > 0) {
+                        const speed = sprite.state.baseSpeed * playbackSpeed;
+                        sprite.state.progress += speed;
+                        if (sprite.state.progress >= distance) {
+                            sprite.state.segmentIndex++;
+                            sprite.state.progress = 0;
+                            sprite.state.x = endWp.x;
+                            sprite.state.y = endWp.y;
+                            sprite.state.phase = 'rotating';
+                        } else {
+                            const progressRatio = sprite.state.progress / distance;
+                            sprite.state.x = startWp.x + dx * progressRatio;
+                            sprite.state.y = startWp.y + dy * progressRatio;
+                        }
+                    } else { // Waypoints are on top of each other
+                        sprite.state.segmentIndex++;
+                        sprite.state.phase = 'rotating';
+                    }
+                }
+            });
         }
 
         // Always render (even when paused, to show pan/zoom changes)
@@ -1600,7 +1745,13 @@
         ctx.scale(zoomLevel, zoomLevel);
         
         if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
-        drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
+        
+        // Draw all animating sprites
+        spriteInstances.forEach(sprite => {
+            if (sprite.state.phase !== 'idle') {
+                drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading);
+            }
+        });
         
         ctx.restore();
 
