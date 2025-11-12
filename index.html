@@ -99,10 +99,6 @@
                         <input id="fieldUpload" type="file" class="hidden" accept="image/*,application/pdf">
                     </label>
                 </div>
-                <div>
-                    <label for="robotSizeSlider" class="block mb-2 font-medium">Robot Size: <span id="robotSizeValue" class="font-bold text-sky-400">50px</span></label>
-                    <input id="robotSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
-                </div>
                 
                 <!-- Background Options -->
                 <div class="bg-gray-700/50 p-3 rounded-lg space-y-3">
@@ -307,8 +303,6 @@
     const stopActionsList = document.getElementById('stopActionsList');
     const addStopActionBtn = document.getElementById('addStopActionBtn');
     const duplicateActionBtn = document.getElementById('duplicateActionBtn');
-    const robotSizeSlider = document.getElementById('robotSizeSlider');
-    const robotSizeValue = document.getElementById('robotSizeValue');
     const speedSlider = document.getElementById('speedSlider');
     const speedValue = document.getElementById('speedValue');
     
@@ -343,7 +337,6 @@
     
     let selectedWaypointIndex = -1;
     let animationFrameId = null;
-    let robotSize = 50; // Visual size of the robot on canvas
     let playbackSpeed = 1; // Animation playback speed multiplier
     
     // Background options
@@ -384,6 +377,7 @@
             name: name,
             waypoints: [],
             defaultSpriteIndex: 0, // Default sprite image to use for new waypoints
+            size: 50, // Visual size of the sprite on canvas
             state: {
                 x: 0,
                 y: 0,
@@ -456,6 +450,27 @@
             spriteItem.appendChild(uploadBtn);
             spriteList.appendChild(spriteItem);
         });
+        
+        // Add size control for the active sprite
+        if (spriteInstances.length > 0) {
+            const activeSprite = spriteInstances[activeSpriteIndex];
+            const sizeControl = document.createElement('div');
+            sizeControl.className = 'mt-3 pt-3 border-t border-gray-600';
+            sizeControl.innerHTML = `
+                <label class="block mb-2 font-medium text-sm">Sprite Size: <span id="spriteSizeValue" class="font-bold text-sky-400">${activeSprite.size}px</span></label>
+                <input id="spriteSizeSlider" type="range" min="10" max="500" value="${activeSprite.size}" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+            `;
+            spriteList.appendChild(sizeControl);
+            
+            // Attach event listener to the slider
+            const slider = document.getElementById('spriteSizeSlider');
+            slider.addEventListener('input', (e) => {
+                const newSize = parseInt(e.target.value);
+                activeSprite.size = newSize;
+                document.getElementById('spriteSizeValue').textContent = `${newSize}px`;
+                draw();
+            });
+        }
     }
     
     function uploadSpriteForInstance(spriteIndex) {
@@ -565,7 +580,6 @@
         headingSlider.addEventListener('input', handleHeadingChange);
         addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
         duplicateActionBtn.addEventListener('click', handleDuplicateAction);
-        robotSizeSlider.addEventListener('input', handleRobotSizeChange);
         speedSlider.addEventListener('input', handleSpeedChange);
         animateBtn.addEventListener('click', startAnimation);
         stopBtn.addEventListener('click', stopAnimation);
@@ -818,12 +832,6 @@
             
             waypointsListContainer.appendChild(wpItem);
         });
-    }
-
-    function handleRobotSizeChange(e) {
-        robotSize = parseInt(e.target.value);
-        robotSizeValue.textContent = `${robotSize}px`;
-        draw(); // Redraw the canvas to show the new preview size
     }
     
     function handleSpeedChange(e) {
@@ -1147,8 +1155,20 @@
         ctx.translate(usePanX, usePanY);
         ctx.scale(useZoom, useZoom);
         
-        if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
-        drawRobot(robotSprites[robotState.spriteIndex], robotState.x, robotState.y, robotState.heading);
+        // Draw background
+        if (!useBackground) {
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (fieldImage) {
+            ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
+        }
+        
+        // Draw all animating sprites
+        spriteInstances.forEach(sprite => {
+            if (sprite.state.phase !== 'idle') {
+                drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading, sprite.size);
+            }
+        });
         
         ctx.restore();
     }
@@ -1201,7 +1221,7 @@
                 const lastAction = wp.stopActions[wp.stopActions.length - 1];
                 if (lastAction && robotSprites[lastAction.spriteIndex]) {
                     const rotation = wp.heading + (lastAction.rotation || 0);
-                    drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, isActive ? 0.5 : 0.2);
+                    drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, sprite.size, isActive ? 0.5 : 0.2);
                 }
             });
         });
@@ -1209,13 +1229,13 @@
         ctx.restore();
     }
 
-    function drawRobot(sprite, x, y, heading, opacity = 1.0) {
+    function drawRobot(sprite, x, y, heading, size, opacity = 1.0) {
         if (!sprite) return;
         ctx.save();
         ctx.globalAlpha = opacity;
         ctx.translate(x, y);
         ctx.rotate(heading * Math.PI / 180);
-        ctx.drawImage(sprite, -robotSize / 2, -robotSize / 2, robotSize, robotSize);
+        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
         ctx.restore();
     }
 
@@ -1790,7 +1810,7 @@
         // Draw all animating sprites
         spriteInstances.forEach(sprite => {
             if (sprite.state.phase !== 'idle') {
-                drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading);
+                drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading, sprite.size);
             }
         });
         
