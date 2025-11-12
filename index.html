@@ -378,6 +378,10 @@
             waypoints: [],
             defaultSpriteIndex: 0, // Default sprite image to use for new waypoints
             size: 50, // Visual size of the sprite on canvas
+            isStatic: false, // If true, sprite is static (no waypoints, fixed position)
+            staticX: 400, // X position for static sprite
+            staticY: 300, // Y position for static sprite
+            staticHeading: 0, // Heading for static sprite
             state: {
                 x: 0,
                 y: 0,
@@ -420,7 +424,7 @@
             leftSide.onclick = () => selectSprite(index);
             
             const spriteName = document.createElement('span');
-            spriteName.textContent = `${sprite.name} (${sprite.waypoints.length} waypoints)`;
+            spriteName.textContent = sprite.isStatic ? `${sprite.name} (static)` : `${sprite.name} (${sprite.waypoints.length} waypoints)`;
             spriteName.className = 'text-sm';
             
             const deleteBtn = document.createElement('button');
@@ -451,25 +455,91 @@
             spriteList.appendChild(spriteItem);
         });
         
-        // Add size control for the active sprite
+        // Add controls for the active sprite
         if (spriteInstances.length > 0) {
             const activeSprite = spriteInstances[activeSpriteIndex];
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'mt-3 pt-3 border-t border-gray-600 space-y-3';
+            
+            // Static sprite checkbox
+            const staticCheckbox = document.createElement('div');
+            staticCheckbox.className = 'flex items-center space-x-2';
+            staticCheckbox.innerHTML = `
+                <input id="staticSpriteCheckbox" type="checkbox" ${activeSprite.isStatic ? 'checked' : ''} class="w-4 h-4 text-sky-600 bg-gray-700 border-gray-600 rounded focus:ring-sky-500">
+                <label for="staticSpriteCheckbox" class="text-sm text-gray-300">Static Sprite (fixed position)</label>
+            `;
+            controlsDiv.appendChild(staticCheckbox);
+            
+            // Static position controls (only show if static)
+            if (activeSprite.isStatic) {
+                const staticControls = document.createElement('div');
+                staticControls.className = 'space-y-2 pl-6 text-xs';
+                staticControls.innerHTML = `
+                    <div>
+                        <label class="block mb-1">X Position: <span id="staticXValue" class="font-bold text-sky-400">${activeSprite.staticX}</span></label>
+                        <input id="staticXSlider" type="range" min="0" max="1200" value="${activeSprite.staticX}" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block mb-1">Y Position: <span id="staticYValue" class="font-bold text-sky-400">${activeSprite.staticY}</span></label>
+                        <input id="staticYSlider" type="range" min="0" max="1200" value="${activeSprite.staticY}" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block mb-1">Heading: <span id="staticHeadingValue" class="font-bold text-sky-400">${activeSprite.staticHeading}°</span></label>
+                        <input id="staticHeadingSlider" type="range" min="0" max="359" value="${activeSprite.staticHeading}" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                `;
+                controlsDiv.appendChild(staticControls);
+            }
+            
+            // Size control
             const sizeControl = document.createElement('div');
-            sizeControl.className = 'mt-3 pt-3 border-t border-gray-600';
             sizeControl.innerHTML = `
                 <label class="block mb-2 font-medium text-sm">Sprite Size: <span id="spriteSizeValue" class="font-bold text-sky-400">${activeSprite.size}px</span></label>
                 <input id="spriteSizeSlider" type="range" min="10" max="500" value="${activeSprite.size}" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
             `;
-            spriteList.appendChild(sizeControl);
+            controlsDiv.appendChild(sizeControl);
             
-            // Attach event listener to the slider
-            const slider = document.getElementById('spriteSizeSlider');
-            slider.addEventListener('input', (e) => {
+            spriteList.appendChild(controlsDiv);
+            
+            // Attach event listeners
+            const staticCheckboxEl = document.getElementById('staticSpriteCheckbox');
+            staticCheckboxEl.addEventListener('change', (e) => {
+                activeSprite.isStatic = e.target.checked;
+                renderSpriteList();
+                renderWaypointsList();
+                draw();
+            });
+            
+            const sizeSlider = document.getElementById('spriteSizeSlider');
+            sizeSlider.addEventListener('input', (e) => {
                 const newSize = parseInt(e.target.value);
                 activeSprite.size = newSize;
                 document.getElementById('spriteSizeValue').textContent = `${newSize}px`;
                 draw();
             });
+            
+            if (activeSprite.isStatic) {
+                const staticXSlider = document.getElementById('staticXSlider');
+                staticXSlider.addEventListener('input', (e) => {
+                    activeSprite.staticX = parseInt(e.target.value);
+                    document.getElementById('staticXValue').textContent = activeSprite.staticX;
+                    draw();
+                });
+                
+                const staticYSlider = document.getElementById('staticYSlider');
+                staticYSlider.addEventListener('input', (e) => {
+                    activeSprite.staticY = parseInt(e.target.value);
+                    document.getElementById('staticYValue').textContent = activeSprite.staticY;
+                    draw();
+                });
+                
+                const staticHeadingSlider = document.getElementById('staticHeadingSlider');
+                staticHeadingSlider.addEventListener('input', (e) => {
+                    activeSprite.staticHeading = parseInt(e.target.value);
+                    document.getElementById('staticHeadingValue').textContent = `${activeSprite.staticHeading}°`;
+                    draw();
+                });
+            }
         }
     }
     
@@ -745,6 +815,14 @@
     // --- User Interaction Handlers ---
     function handleCanvasClick(e) {
         if (animationFrameId || isRecording || isDragging || isDraggingWaypoint) return;
+        
+        const sprite = getActiveSprite();
+        
+        // Prevent adding waypoints to static sprites
+        if (sprite.isStatic) {
+            return;
+        }
+        
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -752,7 +830,6 @@
         const x = ((e.clientX - rect.left) * scaleX - panX) / zoomLevel;
         const y = ((e.clientY - rect.top) * scaleY - panY) / zoomLevel;
 
-        const sprite = getActiveSprite();
         const clickedWaypointIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
 
         if (clickedWaypointIndex !== -1) {
@@ -985,12 +1062,14 @@
         
         // Check if clicking on a waypoint to drag it
         const sprite = getActiveSprite();
-        const clickedWaypointIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
-        if (clickedWaypointIndex !== -1 && !isRecording) {
-            isDraggingWaypoint = true;
-            draggedWaypointIndex = clickedWaypointIndex;
-            canvas.style.cursor = 'move';
-            return;
+        if (!sprite.isStatic) {
+            const clickedWaypointIndex = sprite.waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+            if (clickedWaypointIndex !== -1 && !isRecording) {
+                isDraggingWaypoint = true;
+                draggedWaypointIndex = clickedWaypointIndex;
+                canvas.style.cursor = 'move';
+                return;
+            }
         }
         
         isDragging = true;
@@ -1163,9 +1242,15 @@
             ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         }
         
-        // Draw all animating sprites
+        // Draw all sprites
         spriteInstances.forEach(sprite => {
-            if (sprite.state.phase !== 'idle') {
+            if (sprite.isStatic) {
+                // Draw static sprite at its fixed position
+                if (robotSprites[sprite.defaultSpriteIndex]) {
+                    drawRobot(robotSprites[sprite.defaultSpriteIndex], sprite.staticX, sprite.staticY, sprite.staticHeading, sprite.size);
+                }
+            } else if (sprite.state.phase !== 'idle') {
+                // Draw animating sprite
                 drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading, sprite.size);
             }
         });
@@ -1193,37 +1278,44 @@
         spriteInstances.forEach((sprite, spriteIdx) => {
             const isActive = spriteIdx === activeSpriteIndex;
             
-            // Draw waypoint path
-            if (sprite.waypoints.length > 1) {
-                ctx.beginPath();
-                ctx.moveTo(sprite.waypoints[0].x, sprite.waypoints[0].y);
-                for (let i = 1; i < sprite.waypoints.length; i++) {
-                    ctx.lineTo(sprite.waypoints[i].x, sprite.waypoints[i].y);
+            if (sprite.isStatic) {
+                // Draw static sprite at its fixed position
+                if (robotSprites[sprite.defaultSpriteIndex]) {
+                    drawRobot(robotSprites[sprite.defaultSpriteIndex], sprite.staticX, sprite.staticY, sprite.staticHeading, sprite.size, isActive ? 1.0 : 0.3);
                 }
-                ctx.strokeStyle = isActive ? 'rgba(255, 255, 0, 0.7)' : 'rgba(255, 255, 0, 0.2)';
-                ctx.lineWidth = isActive ? 3 : 2;
-                ctx.stroke();
+            } else {
+                // Draw waypoint path
+                if (sprite.waypoints.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(sprite.waypoints[0].x, sprite.waypoints[0].y);
+                    for (let i = 1; i < sprite.waypoints.length; i++) {
+                        ctx.lineTo(sprite.waypoints[i].x, sprite.waypoints[i].y);
+                    }
+                    ctx.strokeStyle = isActive ? 'rgba(255, 255, 0, 0.7)' : 'rgba(255, 255, 0, 0.2)';
+                    ctx.lineWidth = isActive ? 3 : 2;
+                    ctx.stroke();
+                }
+
+                // Draw waypoints
+                sprite.waypoints.forEach((wp, i) => {
+                    const isHovered = isActive && i === hoveredWaypointIndex;
+                    const radius = isHovered ? 10 : (isActive ? 8 : 5);
+                    ctx.beginPath();
+                    ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
+                    const isSelected = isActive && i === selectedWaypointIndex;
+                    ctx.fillStyle = isSelected ? '#38bdf8' : (isActive ? 'rgba(255, 255, 0, 0.8)' : 'rgba(255, 255, 0, 0.3)');
+                    ctx.fill();
+                    ctx.strokeStyle = isSelected ? '#fff' : (isHovered ? '#fff' : (isActive ? '#000' : 'rgba(0,0,0,0.5)'));
+                    ctx.lineWidth = isHovered ? 3 : 2;
+                    ctx.stroke();
+
+                    const lastAction = wp.stopActions[wp.stopActions.length - 1];
+                    if (lastAction && robotSprites[lastAction.spriteIndex]) {
+                        const rotation = wp.heading + (lastAction.rotation || 0);
+                        drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, sprite.size, isActive ? 0.5 : 0.2);
+                    }
+                });
             }
-
-            // Draw waypoints
-            sprite.waypoints.forEach((wp, i) => {
-                const isHovered = isActive && i === hoveredWaypointIndex;
-                const radius = isHovered ? 10 : (isActive ? 8 : 5);
-                ctx.beginPath();
-                ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
-                const isSelected = isActive && i === selectedWaypointIndex;
-                ctx.fillStyle = isSelected ? '#38bdf8' : (isActive ? 'rgba(255, 255, 0, 0.8)' : 'rgba(255, 255, 0, 0.3)');
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#fff' : (isHovered ? '#fff' : (isActive ? '#000' : 'rgba(0,0,0,0.5)'));
-                ctx.lineWidth = isHovered ? 3 : 2;
-                ctx.stroke();
-
-                const lastAction = wp.stopActions[wp.stopActions.length - 1];
-                if (lastAction && robotSprites[lastAction.spriteIndex]) {
-                    const rotation = wp.heading + (lastAction.rotation || 0);
-                    drawRobot(robotSprites[lastAction.spriteIndex], wp.x, wp.y, rotation, sprite.size, isActive ? 0.5 : 0.2);
-                }
-            });
         });
         
         ctx.restore();
@@ -1807,9 +1899,15 @@
         
         if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         
-        // Draw all animating sprites
+        // Draw all sprites
         spriteInstances.forEach(sprite => {
-            if (sprite.state.phase !== 'idle') {
+            if (sprite.isStatic) {
+                // Draw static sprite at its fixed position
+                if (robotSprites[sprite.defaultSpriteIndex]) {
+                    drawRobot(robotSprites[sprite.defaultSpriteIndex], sprite.staticX, sprite.staticY, sprite.staticHeading, sprite.size);
+                }
+            } else if (sprite.state.phase !== 'idle') {
+                // Draw animating sprite
                 drawRobot(robotSprites[sprite.state.spriteIndex], sprite.state.x, sprite.state.y, sprite.state.heading, sprite.size);
             }
         });
