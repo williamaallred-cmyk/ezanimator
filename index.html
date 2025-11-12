@@ -75,7 +75,8 @@
             <div class="bg-gray-700/50 p-4 rounded-lg text-sm text-gray-300">
                 <h3 class="font-semibold text-lg mb-2 text-white">How to Use:</h3>
                 <ol class="list-decimal list-inside space-y-1.5">
-                    <li>Upload a field image/PDF & initial robot sprite.</li>
+                    <li>Upload a field image/PDF.</li>
+                    <li>Add sprites and upload images for each one.</li>
                     <li>Optional: Disable background to record with solid color.</li>
                     <li>Click on the field to add waypoints (even just 1!).</li>
                     <li>Drag waypoints to reposition them.</li>
@@ -94,14 +95,8 @@
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Setup</h2>
                 <div>
                     <label for="fieldUpload" class="custom-file-upload w-full text-center">
-                        <span id="fieldFileName">1. Upload Field Image/PDF</span>
+                        <span id="fieldFileName">Upload Field Image/PDF</span>
                         <input id="fieldUpload" type="file" class="hidden" accept="image/*,application/pdf">
-                    </label>
-                </div>
-                <div>
-                    <label for="robotUpload" class="custom-file-upload w-full text-center">
-                        <span id="robotFileName">2. Upload Initial Robot Sprite</span>
-                        <input id="robotUpload" type="file" class="hidden" accept="image/*">
                     </label>
                 </div>
                 <div>
@@ -283,11 +278,9 @@
     const ctx = canvas.getContext('2d');
 
     const fieldUpload = document.getElementById('fieldUpload');
-    const robotUpload = document.getElementById('robotUpload');
     const stopActionSpriteUpload = document.getElementById('stopActionSpriteUpload');
     
     const fieldFileName = document.getElementById('fieldFileName');
-    const robotFileName = document.getElementById('robotFileName');
 
     const headingSlider = document.getElementById('heading');
     const headingValue = document.getElementById('headingValue');
@@ -552,16 +545,6 @@
         });
 
         fieldUpload.addEventListener('change', handleFieldUpload);
-        
-        robotUpload.addEventListener('change', handleFileUpload(img => {
-            if (robotSprites.length === 0) {
-                 robotSprites.push(img);
-            } else {
-                robotSprites[0] = img; // Replace the default sprite
-            }
-            robotFileName.textContent = robotUpload.files[0].name;
-            draw();
-        }, 'robot'));
 
         stopActionSpriteUpload.addEventListener('change', handleFileUpload(img => {
              if (selectedWaypointIndex !== -1) {
