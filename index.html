@@ -117,6 +117,10 @@
                     <label for="robotSizeSlider" class="block mb-2 font-medium">Robot Size: <span id="robotSizeValue" class="font-bold text-sky-400">50px</span></label>
                     <input id="robotSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
                 </div>
+                <div>
+                    <label for="objectSizeSlider" class="block mb-2 font-medium">Object Sprite Size: <span id="objectSizeValue" class="font-bold text-sky-400">50px</span></label>
+                    <input id="objectSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                </div>
                 
             </div>
 
@@ -354,6 +358,8 @@
     const duplicateActionBtn = document.getElementById('duplicateActionBtn');
     const robotSizeSlider = document.getElementById('robotSizeSlider');
     const robotSizeValue = document.getElementById('robotSizeValue');
+    const objectSizeSlider = document.getElementById('objectSizeSlider');
+    const objectSizeValue = document.getElementById('objectSizeValue');
     const speedSlider = document.getElementById('speedSlider');
     const speedValue = document.getElementById('speedValue');
     
@@ -393,6 +399,7 @@
     let selectedWaypointIndex = -1;
     let animationFrameId = null;
     let robotSize = 50; // Visual size of the robot on canvas
+    let objectSize = 50; // Visual size of object sprites (index >= 1)
     let playbackSpeed = 1; // Animation playback speed multiplier
     
     // Sprite groups: [{id, name, members: [{spriteIndex, offsetX, offsetY, rotationOffset}]}]
@@ -503,6 +510,7 @@
         addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
         duplicateActionBtn.addEventListener('click', handleDuplicateAction);
         robotSizeSlider.addEventListener('input', handleRobotSizeChange);
+        objectSizeSlider.addEventListener('input', handleObjectSizeChange);
         speedSlider.addEventListener('input', handleSpeedChange);
         animateBtn.addEventListener('click', startAnimation);
         stopBtn.addEventListener('click', stopAnimation);
@@ -958,7 +966,13 @@
     function handleRobotSizeChange(e) {
         robotSize = parseInt(e.target.value);
         robotSizeValue.textContent = `${robotSize}px`;
-        draw(); // Redraw the canvas to show the new preview size
+        draw();
+    }
+
+    function handleObjectSizeChange(e) {
+        objectSize = parseInt(e.target.value);
+        objectSizeValue.textContent = `${objectSize}px`;
+        draw();
     }
     
     function handleSpeedChange(e) {
@@ -1411,13 +1425,13 @@
         ctx.restore();
     }
 
-    function drawRobot(sprite, x, y, heading, opacity = 1.0) {
+    function drawRobot(sprite, x, y, heading, opacity = 1.0, size = robotSize) {
         if (!sprite) return;
         ctx.save();
         ctx.globalAlpha = opacity;
         ctx.translate(x, y);
         ctx.rotate(heading * Math.PI / 180);
-        ctx.drawImage(sprite, -robotSize / 2, -robotSize / 2, robotSize, robotSize);
+        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
         ctx.restore();
     }
 
@@ -1427,6 +1441,7 @@
         group.members.forEach(m => {
             const sprite = robotSprites[m.spriteIndex];
             if (!sprite) return;
+            const size = m.spriteIndex === 0 ? robotSize : objectSize;
             ctx.save();
             ctx.globalAlpha = opacity;
             ctx.translate(x, y);
@@ -1435,25 +1450,26 @@
             const scale = robotSize / 50; // offsets are authored at size=50
             ctx.translate((m.offsetX || 0) * scale, (m.offsetY || 0) * scale);
             ctx.rotate((m.rotationOffset || 0) * Math.PI / 180);
-            ctx.drawImage(sprite, -robotSize / 2, -robotSize / 2, robotSize, robotSize);
+            ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
             ctx.restore();
         });
     }
 
-    // Resolve the active action for drawing: returns {isGroup, group, sprite}
+    // Resolve the active action for drawing: returns {isGroup, group, sprite, spriteIndex}
     function resolveActionDrawable(action) {
         if (action && action.groupId !== null && action.groupId !== undefined) {
             const group = spriteGroups.find(g => g.id === action.groupId);
             if (group) return { isGroup: true, group };
         }
-        const sprite = robotSprites[action ? action.spriteIndex : 0];
-        return { isGroup: false, sprite };
+        const si = action ? action.spriteIndex : 0;
+        const sprite = robotSprites[si];
+        return { isGroup: false, sprite, spriteIndex: si };
     }
 
     function drawActorAt(action, x, y, heading, opacity = 1.0) {
         const d = resolveActionDrawable(action);
         if (d.isGroup) drawRobotGroup(d.group, x, y, heading, opacity);
-        else drawRobot(d.sprite, x, y, heading, opacity);
+        else drawRobot(d.sprite, x, y, heading, opacity, d.spriteIndex === 0 ? robotSize : objectSize);
     }
 
     // --- Recording Logic ---
