@@ -188,6 +188,22 @@
                 <button id="deleteWaypoint" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                     Delete Waypoint
                 </button>
+
+                <!-- Freeze Sprite -->
+                <div class="space-y-2 border-t border-gray-600 pt-3">
+                    <h3 class="text-base font-semibold text-orange-300">Freeze Sprite at This Position</h3>
+                    <p class="text-xs text-gray-400">Detach an object sprite here — it stays locked on-screen at this exact spot while the robot moves on.</p>
+                    <div id="frozenOverlaysList" class="space-y-1 bg-gray-700/50 p-2 rounded-lg text-xs min-h-[28px]"></div>
+                    <select id="freezeSpriteSelect" class="w-full bg-gray-900 rounded px-2 py-1.5 text-gray-200 text-xs border border-gray-700"></select>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="text-gray-400 shrink-0">Visible for next</span>
+                        <input id="freezeDurationInput" type="number" value="1" min="1" class="bg-gray-900 rounded px-2 py-1 w-14 text-center border border-gray-700">
+                        <span class="text-gray-400">waypoints</span>
+                    </div>
+                    <button id="addFreezeBtn" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                        Freeze Sprite Here
+                    </button>
+                </div>
             </div>
 
             <!-- View Controls -->
@@ -337,6 +353,9 @@
     const stopBtn = document.getElementById('stop');
     const clearBtn = document.getElementById('clear');
     const deleteWaypointBtn = document.getElementById('deleteWaypoint');
+    const freezeSpriteSelect = document.getElementById('freezeSpriteSelect');
+    const freezeDurationInput = document.getElementById('freezeDurationInput');
+    const addFreezeBtn = document.getElementById('addFreezeBtn');
     const recordBtn = document.getElementById('record');
     const convertGifBtn = document.getElementById('convertGif');
     const downloadWebmBtn = document.getElementById('downloadWebm');
@@ -405,6 +424,10 @@
     // Sprite groups: [{id, name, members: [{spriteIndex, offsetX, offsetY, rotationOffset}]}]
     let spriteGroups = [];
     let nextGroupId = 1;
+
+    // Frozen overlays: [{id, spriteIndex, x, y, heading, startSegment, duration}]
+    let frozenOverlays = [];
+    let nextOverlayId = 1;
     
     // Group edit modal state
     let editingGroupIndex = -1; // index in spriteGroups, or -1 for new
@@ -516,6 +539,7 @@
         stopBtn.addEventListener('click', stopAnimation);
         clearBtn.addEventListener('click', clearWaypoints);
         deleteWaypointBtn.addEventListener('click', deleteSelectedWaypoint);
+        addFreezeBtn.addEventListener('click', addFreezeOverlay);
         recordBtn.addEventListener('click', toggleRecording);
         if (convertGifBtn) {
             convertGifBtn.addEventListener('click', convertRecordedToGIF);
@@ -903,13 +927,15 @@
                 return;
             }
             const lastWaypoint = waypoints[waypoints.length - 1];
-            const lastSpriteIndex = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].spriteIndex : 0;
-            const lastRotation = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1].rotation : 0;
+            const lastAction = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1] : null;
+            const lastSpriteIndex = lastAction ? lastAction.spriteIndex : 0;
+            const lastRotation = lastAction ? lastAction.rotation : 0;
+            const lastGroupId = lastAction ? (lastAction.groupId ?? null) : null;
             
             waypoints.push({
                 x, y,
                 heading: lastWaypoint ? lastWaypoint.heading : 0,
-                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation }],
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }],
             });
             selectWaypoint(waypoints.length - 1);
         }
@@ -924,6 +950,7 @@
         headingSlider.value = wp.heading;
         headingValue.textContent = `${wp.heading}°`;
         renderStopActions(index);
+        renderFrozenOverlaysForWaypoint(index);
         renderWaypointsList();
     }
     
@@ -1178,10 +1205,100 @@
     function clearWaypoints() {
         if (confirm('Are you sure you want to clear all waypoints?')) {
             waypoints = [];
+            frozenOverlays = [];
             deselectWaypoint();
             renderWaypointsList();
             draw();
         }
+    }
+
+    // --- Frozen Overlays ---
+    function renderFrozenOverlaysForWaypoint(waypointIndex) {
+        const list = document.getElementById('frozenOverlaysList');
+        if (!list) return;
+
+        // Populate sprite select with all uploaded sprites
+        freezeSpriteSelect.innerHTML = '';
+        if (robotSprites.length === 0) {
+            freezeSpriteSelect.innerHTML = '<option value="">No sprites uploaded</option>';
+        } else {
+            robotSprites.forEach((_, si) => {
+                const opt = document.createElement('option');
+                opt.value = si;
+                opt.textContent = si === 0 ? 'Robot (sprite 0)' : `Object sprite ${si}`;
+                freezeSpriteSelect.appendChild(opt);
+            });
+            // Default to first object sprite if available, otherwise robot
+            freezeSpriteSelect.value = robotSprites.length > 1 ? '1' : '0';
+        }
+
+        // Show overlays that start at this waypoint
+        const mine = frozenOverlays.filter(o => o.startSegment === waypointIndex);
+        list.innerHTML = '';
+        if (mine.length === 0) {
+            list.innerHTML = '<p class="text-gray-500">None yet.</p>';
+            return;
+        }
+        mine.forEach(o => {
+            const sprite = robotSprites[o.spriteIndex];
+            const el = document.createElement('div');
+            el.className = 'flex items-center space-x-2 bg-gray-800 p-1.5 rounded';
+            el.innerHTML = `
+                ${sprite ? `<img src="${sprite.src}" class="w-6 h-6 rounded object-contain border border-orange-700 shrink-0">` : ''}
+                <span class="flex-1 text-gray-300">Sprite ${o.spriteIndex} &mdash; ${o.duration} wp${o.duration !== 1 ? 's' : ''}</span>
+                <button class="del-freeze text-red-400 hover:text-red-300 text-lg font-bold leading-none">&times;</button>
+            `;
+            el.querySelector('.del-freeze').addEventListener('click', () => {
+                frozenOverlays = frozenOverlays.filter(f => f.id !== o.id);
+                renderFrozenOverlaysForWaypoint(waypointIndex);
+                draw();
+            });
+            list.appendChild(el);
+        });
+    }
+
+    function addFreezeOverlay() {
+        if (selectedWaypointIndex === -1) return;
+        const si = parseInt(freezeSpriteSelect.value);
+        if (isNaN(si) || !robotSprites[si]) { showInfo('Select a sprite to freeze.'); return; }
+        const duration = Math.max(1, parseInt(freezeDurationInput.value) || 1);
+
+        const wp = waypoints[selectedWaypointIndex];
+        const action = wp.stopActions[wp.stopActions.length - 1];
+        const heading = wp.heading + (action.rotation || 0);
+        const headingRad = heading * Math.PI / 180;
+        const scale = robotSize / 50;
+
+        // Find the group member offset for this sprite if the action uses a group
+        let offsetX = 0, offsetY = 0, extraRot = 0;
+        if (action.groupId !== null && action.groupId !== undefined) {
+            const group = spriteGroups.find(g => g.id === action.groupId);
+            if (group) {
+                const member = group.members.find(m => m.spriteIndex === si);
+                if (member) {
+                    offsetX = (member.offsetX || 0) * scale;
+                    offsetY = (member.offsetY || 0) * scale;
+                    extraRot = member.rotationOffset || 0;
+                }
+            }
+        }
+
+        // Rotate the local offset into world space using the robot's heading
+        const worldX = wp.x + offsetX * Math.cos(headingRad) - offsetY * Math.sin(headingRad);
+        const worldY = wp.y + offsetX * Math.sin(headingRad) + offsetY * Math.cos(headingRad);
+
+        frozenOverlays.push({
+            id: nextOverlayId++,
+            spriteIndex: si,
+            x: worldX,
+            y: worldY,
+            heading: heading + extraRot,
+            startSegment: selectedWaypointIndex,
+            duration,
+        });
+
+        renderFrozenOverlaysForWaypoint(selectedWaypointIndex);
+        draw();
     }
     
     function showInfo(message) {
@@ -1375,6 +1492,14 @@
         
         if (fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         drawActorAt(robotState.currentAction, robotState.x, robotState.y, robotState.heading);
+
+        // Draw active frozen overlays
+        frozenOverlays.forEach(o => {
+            if (robotState.segmentIndex >= o.startSegment && robotState.segmentIndex < o.startSegment + o.duration) {
+                const sprite = robotSprites[o.spriteIndex];
+                if (sprite) drawRobot(sprite, o.x, o.y, o.heading, 1.0, o.spriteIndex === 0 ? robotSize : objectSize);
+            }
+        });
         
         ctx.restore();
     }
@@ -1420,6 +1545,12 @@
                  const rotation = wp.heading + (lastAction.rotation || 0);
                  drawActorAt(lastAction, wp.x, wp.y, rotation, 0.5);
             }
+        });
+
+        // Draw frozen overlays (preview — always visible in editor at 50% opacity)
+        frozenOverlays.forEach(o => {
+            const sprite = robotSprites[o.spriteIndex];
+            if (sprite) drawRobot(sprite, o.x, o.y, o.heading, 0.5, o.spriteIndex === 0 ? robotSize : objectSize);
         });
         
         ctx.restore();
@@ -2026,6 +2157,14 @@
         
         if (useBackground && fieldImage) ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height);
         drawActorAt(robotState.currentAction, robotState.x, robotState.y, robotState.heading);
+
+        // Draw active frozen overlays
+        frozenOverlays.forEach(o => {
+            if (robotState.segmentIndex >= o.startSegment && robotState.segmentIndex < o.startSegment + o.duration) {
+                const sprite = robotSprites[o.spriteIndex];
+                if (sprite) drawRobot(sprite, o.x, o.y, o.heading, 1.0, o.spriteIndex === 0 ? robotSize : objectSize);
+            }
+        });
         
         ctx.restore();
 
