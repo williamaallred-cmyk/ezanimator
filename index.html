@@ -266,10 +266,14 @@
                 <label class="text-sm text-gray-300 shrink-0">Name:</label>
                 <input id="groupNameInput" type="text" class="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-600 text-sm" placeholder="e.g. Robot + Cube" />
             </div>
-            <p class="text-xs text-gray-400 mt-3 mb-2">Sprites in this group are drawn together at the robot position. Set offsets relative to center (in pixels) and an extra rotation offset.</p>
-            <div id="groupMembersList" class="space-y-2 mt-2"></div>
+            <p class="text-xs text-gray-400 mt-3 mb-1">Sprites in this group are drawn together at the robot position. Set offsets relative to center (in pixels) and an extra rotation offset.</p>
+            <div class="mt-2">
+                <p class="text-xs text-gray-400 mb-1">Pick from uploaded sprites:</p>
+                <div id="groupSpritePicker" class="flex flex-wrap gap-2 bg-gray-900 rounded p-2 min-h-[48px]"></div>
+            </div>
             <input id="groupSpriteUpload" type="file" class="hidden" accept="image/*">
-            <button id="groupAddSpriteBtn" class="mt-3 w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">+ Add Sprite to Group</button>
+            <button id="groupAddSpriteBtn" class="mt-2 w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">+ Upload New Sprite &amp; Add</button>
+            <div id="groupMembersList" class="space-y-2 mt-3"></div>
             <div class="flex justify-end gap-2 mt-5">
                 <button id="groupEditCancel" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-100">Cancel</button>
                 <button id="groupEditSave" class="px-4 py-2 rounded bg-teal-600 hover:bg-teal-700 text-white font-semibold">Save Group</button>
@@ -642,9 +646,32 @@
     }
 
     function renderGroupMembersList() {
+        // Refresh the sprite picker (shows all currently uploaded sprites)
+        const picker = document.getElementById('groupSpritePicker');
+        if (picker) {
+            picker.innerHTML = '';
+            if (robotSprites.length === 0) {
+                picker.innerHTML = '<p class="text-xs text-gray-500">No sprites uploaded yet.</p>';
+            } else {
+                robotSprites.forEach((sprite, si) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.title = `Add sprite ${si + 1} to group`;
+                    btn.className = 'relative group/picker w-10 h-10 rounded border-2 border-gray-600 hover:border-teal-400 bg-gray-800 overflow-hidden flex items-center justify-center transition-colors';
+                    btn.innerHTML = `<img src="${sprite.src}" class="w-full h-full object-contain">
+                        <span class="absolute inset-0 bg-teal-500/20 opacity-0 group-hover/picker:opacity-100 transition-opacity flex items-center justify-center text-white text-lg font-bold">+</span>`;
+                    btn.addEventListener('click', () => {
+                        groupModalPendingMembers.push({ spriteIndex: si, offsetX: 0, offsetY: 0, rotationOffset: 0 });
+                        renderGroupMembersList();
+                    });
+                    picker.appendChild(btn);
+                });
+            }
+        }
+
         groupMembersList.innerHTML = '';
         if (groupModalPendingMembers.length === 0) {
-            groupMembersList.innerHTML = '<p class="text-xs text-gray-500">No sprites yet. Add sprites above.</p>';
+            groupMembersList.innerHTML = '<p class="text-xs text-gray-500">No sprites added yet. Click a sprite above or upload a new one.</p>';
             return;
         }
         groupModalPendingMembers.forEach((m, mi) => {
