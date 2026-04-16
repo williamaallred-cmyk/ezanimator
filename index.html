@@ -63,7 +63,23 @@
 
     <!-- Main Canvas Area -->
     <main class="flex-1 flex flex-col items-center justify-center p-4 bg-gray-800/50">
-        <canvas id="robotCanvas" class="bg-gray-700 rounded-lg shadow-2xl max-w-full max-h-full"></canvas>
+        <div class="relative w-full flex-1 flex items-center justify-center">
+            <canvas id="robotCanvas" class="bg-gray-700 rounded-lg shadow-2xl max-w-full max-h-full"></canvas>
+            <!-- Canvas toolbar: tool buttons + sprite picker, pinned to top-left of canvas -->
+            <div class="absolute top-2 left-2 flex items-center gap-2 pointer-events-auto flex-wrap">
+                <!-- Tool buttons -->
+                <div class="flex items-center gap-1 bg-gray-900/80 backdrop-blur rounded-lg p-1">
+                    <button id="toolPointer" title="Select / Add waypoint" class="tool-btn w-9 h-9 flex items-center justify-center rounded-md bg-sky-600 text-white transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M4 0 L4 18 L8 14 L11 21 L13 20 L10 13 L15 13 Z"/></svg>
+                    </button>
+                    <button id="toolEraser" title="Delete waypoint" class="tool-btn w-9 h-9 flex items-center justify-center rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                </div>
+                <!-- Sprite picker -->
+                <div id="allSpritePicker" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
     </main>
 
     <!-- Controls Panel -->
@@ -108,12 +124,10 @@
                 </div>
                 <div>
                     <label for="objectSpriteUpload" class="custom-file-upload w-full text-center">
-                        <span>3. Add Object Sprite</span>
-                        <input id="objectSpriteUpload" type="file" class="hidden" accept="image/*">
+                        <span>3. Add Object Sprite(s)</span>
+                        <input id="objectSpriteUpload" type="file" class="hidden" accept="image/*" multiple>
                     </label>
                 </div>
-                <!-- Unified sprite picker: click to select active sprite/track -->
-                <div id="allSpritePicker" class="flex flex-wrap gap-2 mt-1 empty:hidden"></div>
                 <div>
                     <label for="robotSizeSlider" class="block mb-2 font-medium">Robot Size: <span id="robotSizeValue" class="font-bold text-sky-400">50px</span></label>
                     <input id="robotSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -199,6 +213,9 @@
                     </button>
                     <button id="duplicateActionBtn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">
                         + Duplicate Last Action
+                    </button>
+                    <button id="addDisappearBtn" class="w-full bg-rose-800 hover:bg-rose-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                        &#10005; Add Disappear Action
                     </button>
                 </div>
 
@@ -512,6 +529,7 @@
     let draggedWaypointIndex = -1;
     let hoveredWaypointIndex = -1;
     let isShiftPressed = false;
+    let activeTool = 'pointer'; // 'pointer' | 'eraser'
 
     // --- Initialization and Event Listeners ---
     function init() {
@@ -547,11 +565,26 @@
             draw();
         }, 'robot'));
 
-        objectSpriteUpload.addEventListener('change', handleFileUpload(img => {
-            robotSprites.push(img);
-            renderAllSpritePicker();
-            draw();
-        }, 'object sprite'));
+        objectSpriteUpload.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            let loaded = 0;
+            files.forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    const img = new Image();
+                    img.onload = () => {
+                        robotSprites.push(img);
+                        loaded++;
+                        if (loaded === files.length) { renderAllSpritePicker(); draw(); }
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+            e.target.value = '';
+        });
 
         stopActionSpriteUpload.addEventListener('change', handleFileUpload(img => {
              if (selectedWaypointIndex !== -1) {
@@ -571,6 +604,7 @@
         canvas.addEventListener('click', handleCanvasClick);
         headingSlider.addEventListener('input', handleHeadingChange);
         addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
+        document.getElementById('addDisappearBtn').addEventListener('click', addDisappearAction);
         duplicateActionBtn.addEventListener('click', handleDuplicateAction);
         robotSizeSlider.addEventListener('input', handleRobotSizeChange);
         objectSizeSlider.addEventListener('input', handleObjectSizeChange);
@@ -620,6 +654,10 @@
         groupSpriteUpload.addEventListener('change', handleGroupSpriteUpload);
         groupEditSave.addEventListener('click', saveGroupFromModal);
         groupEditCancel.addEventListener('click', closeGroupEditModal);
+
+        // Canvas tool buttons
+        document.getElementById('toolPointer').addEventListener('click', () => setActiveTool('pointer'));
+        document.getElementById('toolEraser').addEventListener('click', () => setActiveTool('eraser'));
 
         // Sprite tracks listener
         document.getElementById('addTrackBtn').addEventListener('click', addSpriteTrack);
@@ -829,6 +867,14 @@
         }
     }
     
+    function setActiveTool(tool) {
+        activeTool = tool;
+        document.getElementById('toolPointer').className = `tool-btn w-9 h-9 flex items-center justify-center rounded-md transition-colors ${tool === 'pointer' ? 'bg-sky-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`;
+        document.getElementById('toolEraser').className = `tool-btn w-9 h-9 flex items-center justify-center rounded-md transition-colors ${tool === 'eraser' ? 'bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`;
+        canvas.style.cursor = tool === 'eraser' ? 'crosshair' : 'grab';
+        draw();
+    }
+
     function handleBackgroundColorChange() {
         backgroundColor = backgroundColorPicker.value;
         backgroundColorValue.textContent = backgroundColor;
@@ -1132,6 +1178,25 @@
         const x = ((e.clientX - rect.left) * scaleX - panX) / zoomLevel;
         const y = ((e.clientY - rect.top) * scaleY - panY) / zoomLevel;
 
+        if (activeTool === 'eraser') {
+            // Search all actors in the current scene for the clicked waypoint
+            const sceneId = scenes[selectedSceneIndex].id;
+            for (let ai = 0; ai < spriteActors.length; ai++) {
+                const wps = spriteActors[ai].scenePaths[sceneId] || [];
+                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+                if (idx !== -1) {
+                    if (ai !== selectedActorIndex) selectActor(ai);
+                    wps.splice(idx, 1);
+                    if (selectedWaypointIndex >= wps.length) deselectWaypoint();
+                    autoFitSceneDuration(selectedSceneIndex);
+                    renderWaypointsList();
+                    draw();
+                    return;
+                }
+            }
+            return; // clicked empty space in eraser mode — do nothing
+        }
+
         const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
 
         if (clickedWaypointIndex !== -1) {
@@ -1157,6 +1222,7 @@
                 heading: lastWaypoint ? lastWaypoint.heading : 0,
                 stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }],
             });
+            autoFitSceneDuration(selectedSceneIndex);
             selectWaypoint(waypoints.length - 1);
         }
         draw();
@@ -1264,6 +1330,24 @@
             // Backwards-compat defaults
             if (action.rotation === undefined) action.rotation = 0;
             if (action.groupId === undefined) action.groupId = null;
+
+            // --- Disappear action: special compact card ---
+            if (action.disappear) {
+                actionEl.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-rose-400 text-lg">&#10005;</span>
+                        <span class="text-xs font-semibold text-rose-400">Action ${actionIndex + 1} — Disappear</span>
+                        <button class="del-action-btn ml-auto text-red-400 hover:text-red-300 text-xl font-bold">&times;</button>
+                    </div>
+                    <p class="text-xs text-gray-400">Sprite becomes invisible from this action onward in this scene.</p>
+                `;
+                actionEl.querySelector('.del-action-btn').addEventListener('click', () => {
+                    if (wp.stopActions.length > 1) { wp.stopActions.splice(actionIndex, 1); renderStopActions(waypointIndex); draw(); }
+                    else showInfo('A waypoint must have at least one action.');
+                });
+                stopActionsList.appendChild(actionEl);
+                return;
+            }
 
             const useGroup = action.groupId !== null && spriteGroups.some(g => g.id === action.groupId);
             const spriteImg = robotSprites[action.spriteIndex];
@@ -1402,6 +1486,16 @@
         });
     }
     
+    function addDisappearAction() {
+        if (selectedWaypointIndex === -1) return;
+        const wp = waypoints[selectedWaypointIndex];
+        // Carry spriteIndex from the last action so context is clear
+        const lastAction = wp.stopActions[wp.stopActions.length - 1];
+        wp.stopActions.push({ spriteIndex: lastAction ? lastAction.spriteIndex : 0, duration: 1, rotation: 0, disappear: true });
+        renderStopActions(selectedWaypointIndex);
+        draw();
+    }
+
     function deselectWaypoint() {
         selectedWaypointIndex = -1;
         waypointEditor.classList.add('hidden');
@@ -1418,12 +1512,46 @@
         }
     }
     
+    // Returns the minimum scene duration (seconds) needed for all actors to finish their paths.
+    function calcMinSceneDuration(sceneIdx) {
+        const scene = scenes[sceneIdx];
+        const BASE_SPEED = 2;       // px/frame
+        const BASE_ROT_SPEED = 3;   // deg/frame
+        let maxFrames = 0;
+        spriteActors.forEach(actor => {
+            const wps = actor.scenePaths[scene.id] || [];
+            if (wps.length === 0) return;
+            let frames = 0;
+            let prevHeading = wps[0].heading;
+            wps.forEach((wp, i) => {
+                if (i > 0) {
+                    const diff = Math.abs(((((wp.heading - prevHeading) % 360) + 540) % 360) - 180);
+                    frames += Math.ceil(diff / BASE_ROT_SPEED);
+                }
+                prevHeading = wp.heading;
+                wp.stopActions.forEach(a => { if (!a.disappear) frames += (a.duration || 1); });
+                if (i < wps.length - 1) {
+                    const nx = wps[i + 1], dist = Math.sqrt((nx.x - wp.x) ** 2 + (nx.y - wp.y) ** 2);
+                    frames += Math.ceil(dist / BASE_SPEED);
+                }
+            });
+            maxFrames = Math.max(maxFrames, frames);
+        });
+        return Math.max(0.5, Math.ceil((maxFrames / TARGET_FPS) * 2) / 2);
+    }
+
+    function autoFitSceneDuration(sceneIdx) {
+        scenes[sceneIdx].duration = calcMinSceneDuration(sceneIdx);
+        renderScenesList();
+    }
+
     function deleteSelectedWaypoint() {
         if (selectedWaypointIndex !== -1) {
             waypoints.splice(selectedWaypointIndex, 1);
             deselectWaypoint();
             if(waypoints.length > 0) selectWaypoint(waypoints.length - 1);
             else renderWaypointsList();
+            autoFitSceneDuration(selectedSceneIndex);
             draw();
         }
     }
@@ -1435,6 +1563,7 @@
             waypoints.splice(0); // clears via live reference
             frozenOverlays = frozenOverlays.filter(o => !(o.actorId === actorId && o.sceneId === sceneId));
             deselectWaypoint();
+            autoFitSceneDuration(selectedSceneIndex);
             renderWaypointsList();
             draw();
         }
@@ -1808,6 +1937,17 @@
                     if (lastAction) {
                         const rotation = wp.heading + (lastAction.rotation || 0);
                         drawActorAt(lastAction, wp.x, wp.y, rotation, isActiveActor ? 0.5 : 0.2);
+                    }
+
+                    // Eraser-mode indicator: red ring around dot
+                    if (activeTool === 'eraser') {
+                        ctx.beginPath();
+                        ctx.arc(wp.x, wp.y, radius + 4, 0, Math.PI * 2);
+                        ctx.strokeStyle = '#ef4444cc';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([3, 3]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
                     }
                 });
             });
@@ -2404,6 +2544,9 @@
             if (!currentAction) {
                 // Finished all actions at this waypoint
                 state.phase = state.segmentIndex >= wps.length - 1 ? 'holding' : 'moving';
+            } else if (currentAction.disappear) {
+                state.phase = 'invisible';
+                state.currentAction = currentAction;
             } else {
                 state.spriteIndex = currentAction.spriteIndex;
                 state.currentAction = currentAction;
