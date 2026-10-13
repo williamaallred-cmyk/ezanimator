@@ -72,6 +72,9 @@
                     <button id="toolPointer" title="Select / Add waypoint" class="tool-btn w-9 h-9 flex items-center justify-center rounded-md bg-sky-600 text-white transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M4 0 L4 18 L8 14 L11 21 L13 20 L10 13 L15 13 Z"/></svg>
                     </button>
+                    <button id="toolRotate" title="Rotate waypoint" class="tool-btn w-9 h-9 flex items-center justify-center rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
                     <button id="toolEraser" title="Delete waypoint" class="tool-btn w-9 h-9 flex items-center justify-center rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                     </button>
@@ -111,7 +114,7 @@
                     <li>Optional: Disable background to record with solid color.</li>
                     <li>Click on the field to add waypoints (even just 1!).</li>
                     <li>Drag waypoints to reposition them.</li>
-                    <li>Hold SHIFT while dragging for straight lines!</li>
+                    <li>Hold SHIFT while dragging for straight lines or snapping rotations!</li>
                     <li>Select a waypoint to edit heading and actions.</li>
                     <li>In each action, pick <em>Solo sprite</em> or a <em>Group</em>.</li>
                     <li>Use "Add Sprite Action" or "Duplicate" for stop-motion.</li>
@@ -211,6 +214,10 @@
             <!-- Waypoint Editor -->
             <div id="waypointEditor" class="space-y-4 hidden">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Edit Waypoint <span id="waypointId" class="text-sky-400"></span></h2>
+                <div>
+                    <label for="waypointPause" class="block mb-2 font-medium">Wait Time: <span id="pauseValue" class="font-bold text-sky-400">0s</span></label>
+                    <input id="waypointPause" type="range" min="0" max="10" step="0.25" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                </div>
                 <div>
                     <label for="heading" class="block mb-2 font-medium">Heading: <span id="headingValue" class="font-bold text-sky-400">0°</span></label>
                     <input id="heading" type="range" min="0" max="360" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -408,6 +415,8 @@
     const objectSpriteUpload = document.getElementById('objectSpriteUpload');
     const allSpritePicker = document.getElementById('allSpritePicker');
 
+    const waypointPause = document.getElementById('waypointPause');
+    const pauseValue = document.getElementById('pauseValue');
     const headingSlider = document.getElementById('heading');
     const headingValue = document.getElementById('headingValue');
     const animateBtn = document.getElementById('animate');
@@ -544,7 +553,7 @@
     let draggedWaypointIndex = -1;
     let hoveredWaypointIndex = -1;
     let isShiftPressed = false;
-    let activeTool = 'pointer'; // 'pointer' | 'eraser'
+    let activeTool = 'pointer'; // 'pointer' | 'rotate' | 'eraser'
 
     // --- Initialization and Event Listeners ---
     function init() {
@@ -617,6 +626,14 @@
         }, 'stop action sprite'));
 
         canvas.addEventListener('click', handleCanvasClick);
+        waypointPause.addEventListener('input', (e) => {
+            if (selectedWaypointIndex !== -1) {
+                waypoints[selectedWaypointIndex].pauseDuration = parseFloat(e.target.value);
+                pauseValue.textContent = `${e.target.value}s`;
+                autoFitSceneDuration(selectedSceneIndex);
+                draw();
+            }
+        });
         headingSlider.addEventListener('input', handleHeadingChange);
         addStopActionBtn.addEventListener('click', () => stopActionSpriteUpload.click());
         document.getElementById('addDisappearBtn').addEventListener('click', addDisappearAction);
@@ -672,6 +689,7 @@
 
         // Canvas tool buttons
         document.getElementById('toolPointer').addEventListener('click', () => setActiveTool('pointer'));
+        document.getElementById('toolRotate').addEventListener('click', () => setActiveTool('rotate'));
         document.getElementById('toolEraser').addEventListener('click', () => setActiveTool('eraser'));
 
         // Sprite tracks listener
@@ -890,8 +908,9 @@
     function setActiveTool(tool) {
         activeTool = tool;
         document.getElementById('toolPointer').className = `tool-btn w-9 h-9 flex items-center justify-center rounded-md transition-colors ${tool === 'pointer' ? 'bg-sky-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`;
+        document.getElementById('toolRotate').className = `tool-btn w-9 h-9 flex items-center justify-center rounded-md transition-colors ${tool === 'rotate' ? 'bg-amber-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`;
         document.getElementById('toolEraser').className = `tool-btn w-9 h-9 flex items-center justify-center rounded-md transition-colors ${tool === 'eraser' ? 'bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`;
-        canvas.style.cursor = tool === 'eraser' ? 'crosshair' : 'grab';
+        canvas.style.cursor = tool === 'eraser' ? 'crosshair' : (tool === 'rotate' ? 'alias' : 'grab');
         draw();
     }
 
@@ -1203,7 +1222,7 @@
             const sceneId = scenes[selectedSceneIndex].id;
             for (let ai = 0; ai < spriteActors.length; ai++) {
                 const wps = spriteActors[ai].scenePaths[sceneId] || [];
-                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
                 if (idx !== -1) {
                     if (ai !== selectedActorIndex) selectActor(ai);
                     wps.splice(idx, 1);
@@ -1217,7 +1236,7 @@
             return; // clicked empty space in eraser mode — do nothing
         }
 
-        const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+        const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
 
         if (clickedWaypointIndex !== -1) {
             selectWaypoint(clickedWaypointIndex);
@@ -1240,6 +1259,7 @@
             waypoints.push({
                 x, y,
                 heading: lastWaypoint ? lastWaypoint.heading : 0,
+                pauseDuration: 0,
                 stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }],
             });
             autoFitSceneDuration(selectedSceneIndex);
@@ -1253,6 +1273,8 @@
         const wp = waypoints[index];
         waypointEditor.classList.remove('hidden');
         waypointId.textContent = `#${index + 1}`;
+        waypointPause.value = wp.pauseDuration || 0;
+        pauseValue.textContent = `${wp.pauseDuration || 0}s`;
         headingSlider.value = wp.heading;
         headingValue.textContent = `${wp.heading}°`;
         renderStopActions(index);
@@ -1549,6 +1571,7 @@
                     frames += Math.ceil(diff / BASE_ROT_SPEED);
                 }
                 prevHeading = wp.heading;
+                frames += (wp.pauseDuration || 0) * TARGET_FPS;
                 wp.stopActions.forEach(a => { if (!a.disappear) frames += (a.duration || 1); });
                 if (i < wps.length - 1) {
                     const nx = wps[i + 1], dist = Math.sqrt((nx.x - wp.x) ** 2 + (nx.y - wp.y) ** 2);
@@ -1706,14 +1729,14 @@
             let foundActor = -1, foundWp = -1;
             for (let ai = 0; ai < spriteActors.length; ai++) {
                 const wps = spriteActors[ai].scenePaths[sceneId] || [];
-                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
                 if (idx !== -1) { foundActor = ai; foundWp = idx; break; }
             }
             if (foundActor !== -1) {
                 if (foundActor !== selectedActorIndex) selectActor(foundActor);
                 isDraggingWaypoint = true;
                 draggedWaypointIndex = foundWp;
-                canvas.style.cursor = 'move';
+                canvas.style.cursor = activeTool === 'rotate' ? 'alias' : 'move';
                 return;
             }
         }
@@ -1737,6 +1760,24 @@
         
         // Handle waypoint dragging
         if (isDraggingWaypoint && draggedWaypointIndex !== -1) {
+            if (activeTool === 'rotate') {
+                const wp = waypoints[draggedWaypointIndex];
+                let angle = Math.atan2(y - wp.y, x - wp.x) * (180 / Math.PI);
+                angle = (angle + 360) % 360;
+                
+                if (isShiftPressed) {
+                    angle = Math.round(angle / 15) * 15;
+                }
+                
+                wp.heading = Math.round(angle);
+                if (selectedWaypointIndex === draggedWaypointIndex) {
+                    headingSlider.value = wp.heading;
+                    headingValue.textContent = `${wp.heading}°`;
+                }
+                draw();
+                return;
+            }
+
             // Shift key: constrain to straight lines from previous waypoint
             if (isShiftPressed && draggedWaypointIndex > 0) {
                 const prevWp = waypoints[draggedWaypointIndex - 1];
@@ -1778,14 +1819,15 @@
             let hoveredInAny = false;
             for (let ai = 0; ai < spriteActors.length; ai++) {
                 const wps = spriteActors[ai].scenePaths[sceneId] || [];
-                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 15);
+                const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
                 if (idx !== -1) {
                     if (ai === selectedActorIndex) hoveredWaypointIndex = idx;
                     hoveredInAny = true;
                     break;
                 }
             }
-            const newCursor = hoveredInAny ? 'move' : 'grab';
+            const baseCursor = activeTool === 'rotate' ? 'alias' : 'move';
+            const newCursor = hoveredInAny ? baseCursor : (activeTool === 'eraser' ? 'crosshair' : 'grab');
             if (!hoveredInAny && hoveredWaypointIndex !== -1) { hoveredWaypointIndex = -1; draw(); }
             else if (hoveredInAny && hoveredWaypointIndex === -1) draw();
             canvas.style.cursor = newCursor;
@@ -1796,12 +1838,12 @@
         if (isDraggingWaypoint) {
             isDraggingWaypoint = false;
             draggedWaypointIndex = -1;
-            canvas.style.cursor = 'grab';
+            canvas.style.cursor = activeTool === 'rotate' ? 'alias' : (activeTool === 'eraser' ? 'crosshair' : 'grab');
             draw();
         }
         if (isDragging) {
             isDragging = false;
-            canvas.style.cursor = (isPaused || !isRecording) ? 'grab' : 'default';
+            canvas.style.cursor = (isPaused || !isRecording) ? (activeTool === 'eraser' ? 'crosshair' : (activeTool === 'rotate' ? 'alias' : 'grab')) : 'default';
         }
     }
 
@@ -1847,7 +1889,7 @@
 
     function togglePause() {
         isPaused = !isPaused;
-        canvas.style.cursor = isPaused ? 'grab' : 'default';
+        canvas.style.cursor = isPaused ? (activeTool === 'rotate' ? 'alias' : 'grab') : 'default';
         pauseStatus.textContent = isPaused ? 'PAUSED' : 'Recording';
         pauseStatus.className = isPaused ? 'text-yellow-400' : 'text-green-400';
     }
@@ -2508,7 +2550,7 @@
                 segmentIndex: 0, progress: 0,
                 baseSpeed: 2, baseRotationSpeed: 3,
                 phase: 'rotating',
-                actionIndex: 0, dwellCounter: 0,
+                actionIndex: 0, dwellCounter: 0, pauseCounter: 0
             };
         });
     }
@@ -2565,11 +2607,20 @@
             const angleDiff = ((((currentWp.heading - state.heading) % 360) + 540) % 360) - 180;
             if (Math.abs(angleDiff) < rotSpeed) {
                 state.heading = currentWp.heading;
+                state.phase = 'pausing';
+                state.pauseCounter = 0;
+            } else {
+                state.heading += Math.sign(angleDiff) * rotSpeed;
+            }
+        }
+        else if (state.phase === 'pausing') {
+            const wpPause = (currentWp.pauseDuration || 0) * TARGET_FPS;
+            if (state.pauseCounter < wpPause) {
+                state.pauseCounter += playbackSpeed;
+            } else {
                 state.phase = 'dwelling';
                 state.actionIndex = 0;
                 state.dwellCounter = 0;
-            } else {
-                state.heading += Math.sign(angleDiff) * rotSpeed;
             }
         }
         else if (state.phase === 'dwelling') {
@@ -2782,7 +2833,7 @@
         let n = String(name).trim();
         n = n.replace(/[^a-zA-Z0-9 _.-]/g, '_'); // invalid chars -> _
         n = n.replace(/\s+/g, ' '); // collapse spaces
-        n = n.replace(/^[ .]+|[ .]+$/g, ''); // trim dots/spaces
+        n = n.replace(/^[ .]+|[ .]+\$/g, ''); // trim dots/spaces
         if (!n) return '';
         return n.substring(0, 128);
     }
