@@ -81,6 +81,9 @@
                 </div>
                 <!-- Sprite picker -->
                 <div id="allSpritePicker" class="flex flex-wrap gap-2"></div>
+<button id="rotateBaseSpriteBtn" title="Rotate active sprite 90°" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 text-xs font-semibold h-10 ml-2 transition-colors flex items-center justify-center">
+    ⟳ Rotate 90°
+</button>
             </div>
             <!-- Canvas top-right: animate + record buttons -->
             <div class="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
@@ -550,6 +553,7 @@
     
     // --- Waypoint Dragging State ---
     let isDraggingWaypoint = false;
+    let isDrawingPath = false;
     let draggedWaypointIndex = -1;
     let hoveredWaypointIndex = -1;
     let isShiftPressed = false;
@@ -702,6 +706,7 @@
         document.getElementById('canvasAnimateBtn').addEventListener('click', startAnimation);
         document.getElementById('canvasRecordBtn').addEventListener('click', toggleRecording);
         document.getElementById('canvasStopBtn').addEventListener('click', stopAnimation);
+        document.getElementById('rotateBaseSpriteBtn').addEventListener('click', rotateActiveSpriteBase);
 
         renderScenesList();
         renderSpriteGroupsPanel();
@@ -1217,7 +1222,7 @@
         const x = ((e.clientX - rect.left) * scaleX - panX) / zoomLevel;
         const y = ((e.clientY - rect.top) * scaleY - panY) / zoomLevel;
 
-        if (activeTool === 'eraser') {
+        if (activeTool === 'eraser' || activeTool === 'rotate') {
             // Search all actors in the current scene for the clicked waypoint
             const sceneId = scenes[selectedSceneIndex].id;
             for (let ai = 0; ai < spriteActors.length; ai++) {
@@ -1225,15 +1230,21 @@
                 const idx = wps.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
                 if (idx !== -1) {
                     if (ai !== selectedActorIndex) selectActor(ai);
-                    wps.splice(idx, 1);
-                    if (selectedWaypointIndex >= wps.length) deselectWaypoint();
-                    autoFitSceneDuration(selectedSceneIndex);
-                    renderWaypointsList();
+                    
+                    if (activeTool === 'eraser') {
+                        wps.splice(idx, 1);
+                        if (selectedWaypointIndex >= wps.length) deselectWaypoint();
+                        autoFitSceneDuration(selectedSceneIndex);
+                        renderWaypointsList();
+                    } else if (activeTool === 'rotate') {
+                        selectWaypoint(idx);
+                    }
+                    
                     draw();
                     return;
                 }
             }
-            return; // clicked empty space in eraser mode — do nothing
+            return; // clicked empty space in eraser or rotate mode — do nothing
         }
 
         const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
@@ -1758,6 +1769,45 @@
         let x = (canvasX - panX) / zoomLevel;
         let y = (canvasY - panY) / zoomLevel;
         
+        // --- Auto-Draw Path Feature ---
+        if (isDrawingPath) {
+            if (robotSprites.length === 0) return; // Ensure a sprite is uploaded
+            
+            if (waypoints.length === 0) {
+                // Drop the very first waypoint
+                waypoints.push({
+                    x, y, heading: 0, pauseDuration: 0,
+                    stopActions: [{ spriteIndex: spriteActors[selectedActorIndex].defaultSpriteIndex, duration: 1, rotation: 0, groupId: null }]
+                });
+                selectWaypoint(0);
+            } else {
+                const lastWp = waypoints[waypoints.length - 1];
+                const dist = Math.hypot(x - lastWp.x, y - lastWp.y);
+                
+                // Drop a new waypoint every 30 pixels of movement
+                if (dist > 30) {
+                    // Calculate heading based on direction of travel
+                    let heading = Math.atan2(y - lastWp.y, x - lastWp.x) * (180 / Math.PI);
+                    heading = Math.round((heading + 360) % 360);
+                    
+                    const lastAction = lastWp.stopActions[lastWp.stopActions.length - 1];
+                    const lastSpriteIndex = lastAction ? lastAction.spriteIndex : spriteActors[selectedActorIndex].defaultSpriteIndex;
+                    const lastGroupId = lastAction ? (lastAction.groupId ?? null) : null;
+                    
+                    waypoints.push({
+                        x, y, heading, pauseDuration: 0,
+                        stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: 0, groupId: lastGroupId }]
+                    });
+                    
+                    selectWaypoint(waypoints.length - 1);
+                    autoFitSceneDuration(selectedSceneIndex);
+                }
+            }
+            draw();
+            return; // Skip normal dragging logic while drawing
+        }
+
+
         // Handle waypoint dragging
         if (isDraggingWaypoint && draggedWaypointIndex !== -1) {
             if (activeTool === 'rotate') {
@@ -1871,7 +1921,7 @@
         }
     }
 
-    function handleKeyDown(e) {
+   function handleKeyDown(e) {
         if (e.code === 'Space' && isRecording) {
             e.preventDefault();
             togglePause();
@@ -1879,7 +1929,21 @@
         if (e.key === 'Shift') {
             isShiftPressed = true;
         }
+        if (e.key.toLowerCase() === 'x' && !isRecording && !animationFrameId) {
+            isDrawingPath = true;
+            canvas.style.cursor = 'crosshair';
+        }
     }
+    
+    document.addEventListener('keyup', (e) => {
+        if (e.key === 'Shift') {
+            isShiftPressed = false;
+        }
+        if (e.key.toLowerCase() === 'x') {
+            isDrawingPath = false;
+            canvas.style.cursor = activeTool === 'rotate' ? 'alias' : (activeTool === 'eraser' ? 'crosshair' : 'grab');
+        }
+    });
     
     document.addEventListener('keyup', (e) => {
         if (e.key === 'Shift') {
@@ -1943,6 +2007,36 @@
         
         ctx.restore();
     }
+
+    function rotateActiveSpriteBase() {
+    if (robotSprites.length === 0) return;
+    
+    // Get the currently selected sprite index
+    const activeSi = spriteActors[selectedActorIndex]?.defaultSpriteIndex ?? 0;
+    const img = robotSprites[activeSi];
+    
+    // Create an offscreen canvas to redraw the image rotated
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = img.height; 
+    tempCanvas.height = img.width;
+    const tCtx = tempCanvas.getContext('2d');
+    
+    // Rotate and draw
+    tCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+    tCtx.rotate(90 * Math.PI / 180);
+    tCtx.drawImage(img, -img.width / 2, -img.height / 2);
+    
+    // Convert back to image and replace in the array
+    const newImg = new Image();
+    newImg.onload = () => {
+        robotSprites[activeSi] = newImg;
+        renderAllSpritePicker();
+        draw();
+    };
+    newImg.src = tempCanvas.toDataURL();
+}
+
+
 
     // --- Drawing Functions ---
     function draw() {
@@ -2727,7 +2821,22 @@
     }
     
     // --- Save / Load Project ---
-    function saveProject() {
+   function saveProject() {
+        // Prompt the user for a filename
+        let filename = prompt("Enter a filename for your project:", "animation");
+        
+        // If the user clicks Cancel, stop the save process
+        if (filename === null) return; 
+        
+        // Clean up the filename and add the default if they left it blank
+        filename = filename.trim();
+        if (!filename) filename = "animation";
+        
+        // Ensure it ends with .ezanim
+        if (!filename.endsWith('.ezanim')) {
+            filename += '.ezanim';
+        }
+
         const data = {
             version: 1,
             robotSize, objectSize, playbackSpeed,
@@ -2742,7 +2851,7 @@
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'animation.ezanim';
+        a.download = filename; // Use the prompted filename here
         a.click();
         URL.revokeObjectURL(a.href);
     }
