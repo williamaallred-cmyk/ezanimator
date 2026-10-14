@@ -214,9 +214,15 @@
             <!-- Waypoint Editor -->
             <div id="waypointEditor" class="space-y-4 hidden">
                 <h2 class="text-xl font-semibold border-b border-gray-600 pb-2">Edit Waypoint <span id="waypointId" class="text-sky-400"></span></h2>
-                <div>
-                    <label for="waypointPause" class="block mb-2 font-medium">Wait Time: <span id="pauseValue" class="font-bold text-sky-400">0s</span></label>
-                    <input id="waypointPause" type="range" min="0" max="10" step="0.25" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+<div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="delayStart" class="block mb-1 font-medium text-sm">Wait Before: <span id="delayStartValue" class="font-bold text-sky-400">0s</span></label>
+                        <input id="delayStart" type="range" min="0" max="10" step="0.25" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div>
+                        <label for="delayEnd" class="block mb-1 font-medium text-sm">Wait After: <span id="delayEndValue" class="font-bold text-sky-400">0s</span></label>
+                        <input id="delayEnd" type="range" min="0" max="10" step="0.25" value="0" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                    </div>
                 </div>
                 <div>
                     <label for="heading" class="block mb-2 font-medium">Heading: <span id="headingValue" class="font-bold text-sky-400">0°</span></label>
@@ -433,8 +439,10 @@
     const objectSpriteUpload = document.getElementById('objectSpriteUpload');
     const allSpritePicker = document.getElementById('allSpritePicker');
 
-    const waypointPause = document.getElementById('waypointPause');
-    const pauseValue = document.getElementById('pauseValue');
+const delayStartSlider = document.getElementById('delayStart');
+    const delayStartValue = document.getElementById('delayStartValue');
+    const delayEndSlider = document.getElementById('delayEnd');
+    const delayEndValue = document.getElementById('delayEndValue');
     const headingSlider = document.getElementById('heading');
     const headingValue = document.getElementById('headingValue');
     
@@ -638,10 +646,18 @@
         }, 'stop action sprite'));
 
         canvas.addEventListener('click', handleCanvasClick);
-        waypointPause.addEventListener('input', (e) => {
+delayStartSlider.addEventListener('input', (e) => {
             if (selectedWaypointIndex !== -1) {
-                waypoints[selectedWaypointIndex].pauseDuration = parseFloat(e.target.value);
-                pauseValue.textContent = `${e.target.value}s`;
+                waypoints[selectedWaypointIndex].delayStart = parseFloat(e.target.value);
+                delayStartValue.textContent = `${e.target.value}s`;
+                autoFitSceneDuration(selectedSceneIndex);
+                draw();
+            }
+        });
+        delayEndSlider.addEventListener('input', (e) => {
+            if (selectedWaypointIndex !== -1) {
+                waypoints[selectedWaypointIndex].delayEnd = parseFloat(e.target.value);
+                delayEndValue.textContent = `${e.target.value}s`;
                 autoFitSceneDuration(selectedSceneIndex);
                 draw();
             }
@@ -1286,10 +1302,9 @@
             const lastGroupId = lastAction ? (lastAction.groupId ?? null) : null;
             
             waypoints.push({
-                x, y,
-                heading: lastWaypoint ? lastWaypoint.heading : 0,
-                pauseDuration: 0,
-                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }],
+                x, y, heading: lastWaypoint ? lastWaypoint.heading : 0,
+                delayStart: 0, delayEnd: 0, // <-- Replaced pauseDuration
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }]
             });
             autoFitSceneDuration(selectedSceneIndex);
             selectWaypoint(waypoints.length - 1);
@@ -1302,8 +1317,10 @@
         const wp = waypoints[index];
         waypointEditor.classList.remove('hidden');
         waypointId.textContent = `#${index + 1}`;
-        waypointPause.value = wp.pauseDuration || 0;
-        pauseValue.textContent = `${wp.pauseDuration || 0}s`;
+delayStartSlider.value = wp.delayStart || 0;
+        delayStartValue.textContent = `${wp.delayStart || 0}s`;
+        delayEndSlider.value = wp.delayEnd || 0;
+        delayEndValue.textContent = `${wp.delayEnd || 0}s`;
         headingSlider.value = wp.heading;
         headingValue.textContent = `${wp.heading}°`;
         
@@ -1599,8 +1616,8 @@
                 }
                 prevHeading = wp.heading;
                 
-                frames += (wp.pauseDuration || 0) * TARGET_FPS;
-                if (wp.smoothRotate) frames += (wp.smoothRotateDuration || 1) * TARGET_FPS;
+                frames += (wp.delayStart || 0) * TARGET_FPS;
+                frames += (wp.delayEnd || 0) * TARGET_FPS;
 
                 wp.stopActions.forEach(a => { if (!a.disappear) frames += (a.duration || 1); });
                 if (i < wps.length - 1) {
@@ -1785,10 +1802,11 @@
             if (robotSprites.length === 0) return; 
             
             if (waypoints.length === 0) {
-                waypoints.push({
-                    x, y, heading: 0, pauseDuration: 0,
-                    stopActions: [{ spriteIndex: spriteActors[selectedActorIndex].defaultSpriteIndex, duration: 1, rotation: 0, groupId: null }]
-                });
+waypoints.push({
+                x, y, heading: lastWaypoint ? lastWaypoint.heading : 0,
+                delayStart: 0, delayEnd: 0, // <-- Replaced pauseDuration
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }]
+            });
                 selectWaypoint(0);
             } else {
                 const lastWp = waypoints[waypoints.length - 1];
@@ -1802,10 +1820,11 @@
                     const lastSpriteIndex = lastAction ? lastAction.spriteIndex : spriteActors[selectedActorIndex].defaultSpriteIndex;
                     const lastGroupId = lastAction ? (lastAction.groupId ?? null) : null;
                     
-                    waypoints.push({
-                        x, y, heading, pauseDuration: 0,
-                        stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: 0, groupId: lastGroupId }]
-                    });
+                   waypoints.push({
+                x, y, heading: lastWaypoint ? lastWaypoint.heading : 0,
+                delayStart: 0, delayEnd: 0, // <-- Replaced pauseDuration
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }]
+            });
                     
                     selectWaypoint(waypoints.length - 1);
                     autoFitSceneDuration(selectedSceneIndex);
@@ -2516,7 +2535,7 @@
                 currentAction: firstAction || { spriteIndex: actor.defaultSpriteIndex, duration: 1, rotation: 0 },
                 segmentIndex: 0, progress: 0,
                 baseSpeed: 2, baseRotationSpeed: 3,
-                phase: 'rotating',
+                phase: 'delayingStart',
                 actionIndex: 0, dwellCounter: 0, pauseCounter: 0,
                 smoothRotCounter: 0, smoothRotStartHeading: 0
             };
@@ -2570,7 +2589,16 @@
         const currentWp = wps[state.segmentIndex];
         if (!currentWp) { state.phase = 'holding'; return; }
 
-        if (state.phase === 'rotating') {
+        if (state.phase === 'delayingStart') {
+            const waitFrames = (currentWp.delayStart || 0) * TARGET_FPS;
+            if (state.pauseCounter < waitFrames) {
+                state.pauseCounter += playbackSpeed;
+            } else {
+                state.phase = 'rotating';
+                state.pauseCounter = 0;
+            }
+        }
+        else if (state.phase === 'rotating') {
             const rotSpeed = state.baseRotationSpeed * playbackSpeed;
             const angleDiff = ((((currentWp.heading - state.heading) % 360) + 540) % 360) - 180;
             if (Math.abs(angleDiff) < rotSpeed) {
@@ -2581,8 +2609,9 @@
                     state.smoothRotCounter = 0;
                     state.smoothRotStartHeading = state.heading;
                 } else {
-                    state.phase = 'pausing';
-                    state.pauseCounter = 0;
+                    state.phase = 'dwelling';
+                    state.actionIndex = 0;
+                    state.dwellCounter = 0;
                 }
             } else {
                 state.heading += Math.sign(angleDiff) * rotSpeed;
@@ -2596,15 +2625,6 @@
                 state.heading = state.smoothRotStartHeading + ((currentWp.smoothRotateDegrees || 0) * progress);
             } else {
                 state.heading = state.smoothRotStartHeading + (currentWp.smoothRotateDegrees || 0);
-                state.phase = 'pausing';
-                state.pauseCounter = 0;
-            }
-        }
-        else if (state.phase === 'pausing') {
-            const wpPause = (currentWp.pauseDuration || 0) * TARGET_FPS;
-            if (state.pauseCounter < wpPause) {
-                state.pauseCounter += playbackSpeed;
-            } else {
                 state.phase = 'dwelling';
                 state.actionIndex = 0;
                 state.dwellCounter = 0;
@@ -2613,19 +2633,32 @@
         else if (state.phase === 'dwelling') {
             const currentAction = currentWp.stopActions[state.actionIndex];
             if (!currentAction) {
-                state.phase = state.segmentIndex >= wps.length - 1 ? 'holding' : 'moving';
+                state.phase = 'delayingEnd';
+                state.pauseCounter = 0;
             } else if (currentAction.disappear) {
                 state.phase = 'invisible';
                 state.currentAction = currentAction;
             } else {
                 state.spriteIndex = currentAction.spriteIndex;
                 state.currentAction = currentAction;
-                state.heading = currentWp.heading + (currentAction.rotation || 0);
+                
+                // FIXED: Factor in smooth rotation to the base heading
+                const baseHeading = currentWp.heading + (currentWp.smoothRotate ? (currentWp.smoothRotateDegrees || 0) : 0);
+                state.heading = baseHeading + (currentAction.rotation || 0);
+                
                 state.dwellCounter += playbackSpeed;
                 if (state.dwellCounter >= currentAction.duration) {
                     state.actionIndex++;
                     state.dwellCounter = 0;
                 }
+            }
+        }
+        else if (state.phase === 'delayingEnd') {
+            const waitFrames = (currentWp.delayEnd || 0) * TARGET_FPS;
+            if (state.pauseCounter < waitFrames) {
+                state.pauseCounter += playbackSpeed;
+            } else {
+                state.phase = state.segmentIndex >= wps.length - 1 ? 'holding' : 'moving';
             }
         }
         else if (state.phase === 'moving') {
@@ -2635,9 +2668,14 @@
             const dy = endWp.y - currentWp.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
             const lastAction = currentWp.stopActions[currentWp.stopActions.length - 1];
-            state.heading = currentWp.heading + (lastAction.rotation || 0);
+            
+            // FIXED: Factor in smooth rotation to the base heading
+            const baseHeading = currentWp.heading + (currentWp.smoothRotate ? (currentWp.smoothRotateDegrees || 0) : 0);
+            state.heading = baseHeading + (lastAction.rotation || 0);
+            
             state.spriteIndex = lastAction.spriteIndex;
             state.currentAction = lastAction;
+            
             if (distance > 0) {
                 state.progress += state.baseSpeed * playbackSpeed;
                 if (state.progress >= distance) {
@@ -2645,7 +2683,8 @@
                     state.progress = 0;
                     state.x = endWp.x;
                     state.y = endWp.y;
-                    state.phase = 'rotating';
+                    state.phase = 'delayingStart';
+                    state.pauseCounter = 0;
                 } else {
                     const r = state.progress / distance;
                     state.x = currentWp.x + dx * r;
@@ -2653,7 +2692,8 @@
                 }
             } else {
                 state.segmentIndex++;
-                state.phase = 'rotating';
+                state.phase = 'delayingStart';
+                state.pauseCounter = 0;
             }
         }
     }
