@@ -82,7 +82,7 @@
                 <!-- Sprite picker -->
                 <div id="allSpritePicker" class="flex flex-wrap gap-2"></div>
                 <button id="rotateBaseSpriteBtn" title="Rotate active sprite 90°" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 text-xs font-semibold h-10 ml-2 transition-colors flex items-center justify-center">
-                    ⟳ Rotate 90°
+                    ⟳ Rotate Sprite
                 </button>
             </div>
             <!-- Canvas top-right: animate + record buttons -->
@@ -747,15 +747,30 @@ delayStartSlider.addEventListener('input', (e) => {
     
     function rotateActiveSpriteBase() {
         if (robotSprites.length === 0) return;
+        
+        const input = prompt("Enter degrees to rotate the base sprite (e.g., 90, -45, 15):", "90");
+        if (input === null) return; 
+        
+        const degrees = parseFloat(input);
+        if (isNaN(degrees)) {
+            showInfo("Please enter a valid number.");
+            return;
+        }
+
         const activeSi = spriteActors[selectedActorIndex]?.defaultSpriteIndex ?? 0;
         const img = robotSprites[activeSi];
+        
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = img.height; 
-        tempCanvas.height = img.width;
+        // Use the diagonal to prevent the corners from clipping at odd angles
+        const diagonal = Math.ceil(Math.sqrt(img.width * img.width + img.height * img.height));
+        tempCanvas.width = diagonal; 
+        tempCanvas.height = diagonal;
+        
         const tCtx = tempCanvas.getContext('2d');
         tCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-        tCtx.rotate(90 * Math.PI / 180);
+        tCtx.rotate(degrees * Math.PI / 180);
         tCtx.drawImage(img, -img.width / 2, -img.height / 2);
+        
         const newImg = new Image();
         newImg.onload = () => {
             robotSprites[activeSi] = newImg;
