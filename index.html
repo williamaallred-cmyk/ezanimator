@@ -154,7 +154,14 @@
                     <label for="objectSizeSlider" class="block mb-2 font-medium">Object Sprite Size: <span id="objectSizeValue" class="font-bold text-sky-400">50px</span></label>
                     <input id="objectSizeSlider" type="range" min="10" max="500" value="50" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
                 </div>
-                
+                <div class="mb-4">
+                    <label class="block mb-2 font-medium text-sm">Robot Pivot Offset (X, Y):</label>
+                    <div class="flex space-x-2">
+                        <input id="pivotX" type="number" value="0" placeholder="X offset" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-center text-gray-200">
+                        <input id="pivotY" type="number" value="0" placeholder="Y offset" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-center text-gray-200">
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Shifts the rotation center (in pixels). Positive/negative values move it off-center.</p>
+                </div>
             </div>
 
             <!-- Scenes -->
@@ -483,6 +490,10 @@ const delayStartSlider = document.getElementById('delayStart');
     const objectSizeValue = document.getElementById('objectSizeValue');
     const speedSlider = document.getElementById('speedSlider');
     const speedValue = document.getElementById('speedValue');
+    const pivotXInput = document.getElementById('pivotX');
+    const pivotYInput = document.getElementById('pivotY');
+    let pivotOffsetX = 0;
+    let pivotOffsetY = 0;
     
     const waypointsList = document.getElementById('waypointsList');
     const waypointsListContainer = document.getElementById('waypointsListContainer');
@@ -690,6 +701,18 @@ delayStartSlider.addEventListener('input', (e) => {
         duplicateActionBtn.addEventListener('click', handleDuplicateAction);
         robotSizeSlider.addEventListener('input', handleRobotSizeChange);
         objectSizeSlider.addEventListener('input', handleObjectSizeChange);
+        if (pivotXInput) {
+            pivotXInput.addEventListener('input', (e) => {
+                pivotOffsetX = parseFloat(e.target.value) || 0;
+                draw();
+            });
+        }
+        if (pivotYInput) {
+            pivotYInput.addEventListener('input', (e) => {
+                pivotOffsetY = parseFloat(e.target.value) || 0;
+                draw();
+            });
+        }
         speedSlider.addEventListener('input', handleSpeedChange);
         animateBtn.addEventListener('click', startAnimation);
         stopBtn.addEventListener('click', stopAnimation);
