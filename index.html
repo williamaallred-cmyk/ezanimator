@@ -515,7 +515,7 @@ const delayStartSlider = document.getElementById('delayStart');
 
     let fieldImage = null;
     let robotSprites = []; // Global store for all unique sprite images
-
+    let spriteRotations = {}; // Tracks custom base rotations: { spriteIndex: degrees }
     // --- Scenes ---
     let scenes = []; // [{id, name, duration}]
     let nextSceneId = 1;
@@ -748,7 +748,10 @@ delayStartSlider.addEventListener('input', (e) => {
     function rotateActiveSpriteBase() {
         if (robotSprites.length === 0) return;
         
-        const input = prompt("Enter degrees to rotate the base sprite (e.g., 90, -45, 15):", "90");
+        const activeSi = spriteActors[selectedActorIndex]?.defaultSpriteIndex ?? 0;
+        const currentRot = spriteRotations[activeSi] || 0;
+        
+        const input = prompt("Enter degrees to offset the sprite's forward direction (e.g., 90, -45, 15):", currentRot);
         if (input === null) return; 
         
         const degrees = parseFloat(input);
@@ -757,27 +760,10 @@ delayStartSlider.addEventListener('input', (e) => {
             return;
         }
 
-        const activeSi = spriteActors[selectedActorIndex]?.defaultSpriteIndex ?? 0;
-        const img = robotSprites[activeSi];
-        
-        const tempCanvas = document.createElement('canvas');
-        // Use the diagonal to prevent the corners from clipping at odd angles
-        const diagonal = Math.ceil(Math.sqrt(img.width * img.width + img.height * img.height));
-        tempCanvas.width = diagonal; 
-        tempCanvas.height = diagonal;
-        
-        const tCtx = tempCanvas.getContext('2d');
-        tCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-        tCtx.rotate(degrees * Math.PI / 180);
-        tCtx.drawImage(img, -img.width / 2, -img.height / 2);
-        
-        const newImg = new Image();
-        newImg.onload = () => {
-            robotSprites[activeSi] = newImg;
-            renderAllSpritePicker();
-            draw();
-        };
-        newImg.src = tempCanvas.toDataURL();
+        // Store the visual offset instead of destructively redrawing the image pixels
+        spriteRotations[activeSi] = degrees;
+        renderAllSpritePicker();
+        draw();
     }
 
     function handleBackgroundCheckboxChange() {
@@ -799,12 +785,13 @@ delayStartSlider.addEventListener('input', (e) => {
             const outlineStyle = isSelected
                 ? `outline: 3px solid ${trackColor}; outline-offset: 2px;`
                 : (actor ? `outline: 1px solid ${trackColor}40; outline-offset: 1px;` : '');
+            const extraRot = spriteRotations[si] || 0;    
             const thumb = document.createElement('div');
             thumb.className = 'relative cursor-pointer flex-shrink-0';
             thumb.title = si === 0 ? 'Robot (click to select)' : `Sprite ${si} (click to select)`;
             thumb.innerHTML = `
-                <img src="${sprite.src}" class="w-10 h-10 rounded object-contain bg-gray-800 block"
-                     style="${outlineStyle}">
+               <img src="${sprite.src}" class="w-10 h-10 rounded object-contain bg-gray-800 block"
+     style="${outlineStyle} transform: rotate(${extraRot}deg);">
                 ${actor ? `<span class="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-gray-900" style="background:${trackColor}"></span>` : ''}
                 ${si > 0 ? `<span class="absolute -top-1 -left-1 text-xs bg-gray-700 text-gray-300 rounded-full w-4 h-4 flex items-center justify-center leading-none pointer-events-none">${si}</span>` : ''}
             `;
@@ -1299,6 +1286,8 @@ delayStartSlider.addEventListener('input', (e) => {
 
         const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
 
+        if (clickedWaypointIndex !== -1) {
+            selectWaypoint(clickedWaypointIndex);
         } else {
             if (robotSprites.length === 0) {
                 showInfo("Please upload an initial robot sprite first.");
@@ -1332,6 +1321,7 @@ delayStartSlider.addEventListener('input', (e) => {
             });
             autoFitSceneDuration(selectedSceneIndex);
             selectWaypoint(waypoints.length - 1);
+        }
         draw();
     }
     
@@ -2128,8 +2118,19 @@ waypoints.push({
         ctx.save();
         ctx.globalAlpha = opacity;
         ctx.translate(x, y);
-        ctx.rotate(heading * Math.PI / 180);
-        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+        
+        // Look up if this sprite has a base rotation offset
+        const si = robotSprites.indexOf(sprite);
+        const baseRotOffset = (si !== -1 && spriteRotations[si]) ? spriteRotations[si] : 0;
+        
+        // Apply the base offset on top of the waypoint heading
+        ctx.rotate((heading + baseRotOffset) * Math.PI / 180);
+        
+        const scale = size / 50; 
+        const pX = (sprite === robotSprites[0] ? pivotOffsetX : 0) * scale;
+        const pY = (sprite === robotSprites[0] ? pivotOffsetY : 0) * scale;
+        
+        ctx.drawImage(sprite, -size / 2 - pX, -size / 2 - pY, size, size);
         ctx.restore();
     }
 
@@ -2143,9 +2144,12 @@ waypoints.push({
             ctx.globalAlpha = opacity;
             ctx.translate(x, y);
             ctx.rotate(heading * Math.PI / 180);
+            
+            const baseRotOffset = spriteRotations[m.spriteIndex] || 0;
             const scale = robotSize / 50; 
+            
             ctx.translate((m.offsetX || 0) * scale, (m.offsetY || 0) * scale);
-            ctx.rotate((m.rotationOffset || 0) * Math.PI / 180);
+            ctx.rotate(((m.rotationOffset || 0) + baseRotOffset) * Math.PI / 180);
             ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
             ctx.restore();
         });
@@ -2819,6 +2823,7 @@ waypoints.push({
                 playbackSpeed = data.playbackSpeed ?? 1;
                 useBackground = data.useBackground ?? true;
                 backgroundColor = data.backgroundColor ?? '#1f2937';
+                spriteRotations = data.spriteRotations || {};
                 useBackgroundCheckbox.checked = useBackground;
                 backgroundColorPicker.value = backgroundColor;
                 backgroundColorValue.textContent = backgroundColor;
