@@ -1299,8 +1299,6 @@ delayStartSlider.addEventListener('input', (e) => {
 
         const clickedWaypointIndex = waypoints.findIndex(wp => Math.sqrt((wp.x - x)**2 + (wp.y - y)**2) < 35);
 
-        if (clickedWaypointIndex !== -1) {
-            selectWaypoint(clickedWaypointIndex);
         } else {
             if (robotSprites.length === 0) {
                 showInfo("Please upload an initial robot sprite first.");
@@ -1313,17 +1311,27 @@ delayStartSlider.addEventListener('input', (e) => {
             const lastWaypoint = waypoints[waypoints.length - 1];
             const lastAction = lastWaypoint ? lastWaypoint.stopActions[lastWaypoint.stopActions.length - 1] : null;
             const lastSpriteIndex = lastAction ? lastAction.spriteIndex : spriteActors[selectedActorIndex].defaultSpriteIndex;
-            const lastRotation = lastAction ? lastAction.rotation : 0;
             const lastGroupId = lastAction ? (lastAction.groupId ?? null) : null;
             
+            // Calculate the true final heading of the last waypoint
+            let finalHeading = 0;
+            if (lastWaypoint) {
+                finalHeading = lastWaypoint.heading + 
+                               (lastWaypoint.smoothRotate ? (lastWaypoint.smoothRotateDegrees || 0) : 0) + 
+                               (lastAction ? (lastAction.rotation || 0) : 0);
+                // Keep the number cleanly between 0 and 359
+                finalHeading = Math.round((finalHeading % 360 + 360) % 360);
+            }
+            
             waypoints.push({
-                x, y, heading: lastWaypoint ? lastWaypoint.heading : 0,
-                delayStart: 0, delayEnd: 0, // <-- Replaced pauseDuration
-                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: lastRotation, groupId: lastGroupId }]
+                x, y, 
+                heading: finalHeading,
+                delayStart: 0, delayEnd: 0,
+                // Because the rotation is now baked into the heading, we set action rotation to 0
+                stopActions: [{ spriteIndex: lastSpriteIndex, duration: 1, rotation: 0, groupId: lastGroupId }],
             });
             autoFitSceneDuration(selectedSceneIndex);
             selectWaypoint(waypoints.length - 1);
-        }
         draw();
     }
     
